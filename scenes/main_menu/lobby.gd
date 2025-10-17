@@ -13,6 +13,7 @@ func _ready():
 	
 	NetworkManager.player_connected.connect(_on_player_connected)
 	NetworkManager.player_disconnected.connect(_on_player_disconnected)
+	NetworkManager.player_ready_changed.connect(_on_player_ready_changed)
 	
 	start_button.visible = multiplayer.is_server()
 	start_button.disabled = true
@@ -41,7 +42,7 @@ func _on_start_pressed():
 	print("Start button pressed!")
 	if multiplayer.is_server() and NetworkManager.are_all_players_ready():
 		print("All players ready, starting game...")
-		rpc("load_game")
+		load_game.rpc()
 	else:
 		print("Cannot start - Not all ready or not server")
 		print("Is server: ", multiplayer.is_server())
@@ -64,6 +65,12 @@ func _on_player_connected(peer_id: int, player_info: Dictionary):
 
 func _on_player_disconnected(peer_id: int):
 	print("Lobby: Player disconnected - ", peer_id)
+	update_player_list()
+	if multiplayer.is_server():
+		check_all_ready()
+
+func _on_player_ready_changed(peer_id: int, is_ready: bool):
+	print("Lobby: Player ", peer_id, " ready changed to ", is_ready)
 	update_player_list()
 	if multiplayer.is_server():
 		check_all_ready()

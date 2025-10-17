@@ -5,6 +5,7 @@ signal player_disconnected(peer_id)
 signal server_started
 signal connection_failed
 signal connection_succeeded
+signal player_ready_changed(peer_id, is_ready)
 
 const DEFAULT_PORT = 7777
 const MAX_CLIENTS = 8
@@ -102,6 +103,7 @@ func set_player_ready(peer_id: int, is_ready: bool):
 	if players.has(peer_id):
 		players[peer_id]["ready"] = is_ready
 		print("Player ", peer_id, " ready status: ", is_ready)
+		player_ready_changed.emit(peer_id, is_ready)
 
 func are_all_players_ready() -> bool:
 	for player in players.values():
