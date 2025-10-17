@@ -11,5 +11,15 @@ config_version=5
 [application]
 
 config/name="RTS"
+run/main_scene="uid://bjhlpx1qgx2hn"
 config/features=PackedStringArray("4.5", "Forward Plus")
 config/icon="res://icon.svg"
+
+[autoload]
+
+NetworkManager="*res://scripts/autoloads/network_manager.gd"
+
+[physics]
+
+common/physics_ticks_per_second=30
+3d/default_gravity=0.0
