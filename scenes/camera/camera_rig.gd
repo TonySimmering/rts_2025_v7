@@ -16,8 +16,8 @@ extends Node3D
 @export var zoom_speed: float = 2.0
 @export var min_zoom_distance: float = 5.0
 @export var max_zoom_distance: float = 40.0
-@export var min_pitch: float = -70.0  # looking down
-@export var max_pitch: float = -20.0  # looking more horizontal
+@export var min_pitch: float = -20.0  # looking more horizontal
+@export var max_pitch: float = -70.0  # looking more vertical
 
 # Map boundaries (will set these later)
 @export var map_min: Vector3 = Vector3(-50, 0, -50)
@@ -26,9 +26,11 @@ extends Node3D
 # Smoothing
 @export var movement_smoothing: float = 10.0
 @export var rotation_smoothing: float = 5.0
+@export var zoom_smoothing: float = 8.0
 
 # Internal state
 var current_zoom: float = 0.5  # 0 = max zoom out, 1 = max zoom in
+var target_zoom: float = 0.5
 var velocity: Vector3 = Vector3.ZERO
 var target_rotation_y: float = 0.0
 
@@ -40,6 +42,7 @@ func _ready():
 func _process(delta):
 	handle_input(delta)
 	update_camera_transform(delta)
+	smooth_zoom(delta)
 
 func handle_input(delta):
 	# Skip input if UI is focused (we'll add this check later)
@@ -88,11 +91,14 @@ func _unhandled_input(event):
 	# Mouse wheel zoom
 	if event is InputEventMouseButton:
 		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
-			current_zoom = clamp(current_zoom + zoom_speed * 0.1, 0.0, 1.0)
-			apply_zoom()
+			target_zoom = clamp(target_zoom + zoom_speed * 0.1, 0.0, 1.0)
 		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
-			current_zoom = clamp(current_zoom - zoom_speed * 0.1, 0.0, 1.0)
-			apply_zoom()
+			target_zoom = clamp(target_zoom - zoom_speed * 0.1, 0.0, 1.0)
+
+func smooth_zoom(delta):
+	# Smoothly interpolate to target zoom
+	current_zoom = lerp(current_zoom, target_zoom, zoom_smoothing * delta)
+	apply_zoom()
 
 func update_camera_transform(delta):
 	# Apply movement
@@ -106,9 +112,12 @@ func update_camera_transform(delta):
 	rotation.y = lerp_angle(rotation.y, target_rotation_y, rotation_smoothing * delta)
 
 func apply_zoom():
-	# Interpolate distance and pitch based on zoom level
-	var distance = lerp(max_zoom_distance, min_zoom_distance, current_zoom)
-	var pitch = lerp(max_pitch, min_pitch, current_zoom)
+	# Use ease-in-out curve for smooth "swoop" effect
+	var zoom_curve = ease(current_zoom, -2.0)  # Negative value creates ease-in-out
+	
+	# Interpolate distance and pitch based on curved zoom level
+	var distance = lerp(max_zoom_distance, min_zoom_distance, zoom_curve)
+	var pitch = lerp(max_pitch, min_pitch, zoom_curve)
 	
 	# Apply to camera
 	camera.position.z = distance

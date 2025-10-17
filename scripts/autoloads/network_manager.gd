@@ -13,6 +13,8 @@ const MAX_CLIENTS = 8
 var peer: ENetMultiplayerPeer
 var players: Dictionary = {}
 var pending_player_name: String = ""
+var game_seed: int = 0  # ADD THIS LINE
+
 
 func _ready():
 	multiplayer.peer_connected.connect(_on_player_connected)
@@ -113,3 +115,20 @@ func are_all_players_ready() -> bool:
 
 func get_player_count() -> int:
 	return players.size()
+	
+func generate_game_seed() -> int:
+	"""Generate a random seed for the game (called by host)"""
+	randomize()
+	game_seed = randi()
+	print("Generated game seed: ", game_seed)
+	return game_seed
+
+func set_game_seed(seed: int):
+	"""Set the game seed (called by clients receiving seed from host)"""
+	game_seed = seed
+	print("Received game seed: ", game_seed)
+
+@rpc("authority", "call_local", "reliable")
+func sync_game_seed(seed: int):
+	"""Server sends seed to all clients"""
+	set_game_seed(seed)

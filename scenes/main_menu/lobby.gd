@@ -42,6 +42,16 @@ func _on_start_pressed():
 	print("Start button pressed!")
 	if multiplayer.is_server() and NetworkManager.are_all_players_ready():
 		print("All players ready, starting game...")
+		
+		# Generate seed on server
+		var seed = NetworkManager.generate_game_seed()
+		
+		# Send seed to all clients
+		NetworkManager.sync_game_seed.rpc(seed)
+		
+		# Small delay to ensure seed arrives before scene loads
+		await get_tree().create_timer(0.1).timeout
+		
 		load_game.rpc()
 	else:
 		print("Cannot start - Not all ready or not server")

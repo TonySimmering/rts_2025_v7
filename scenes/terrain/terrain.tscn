@@ -1,0 +1,22 @@
+[gd_scene load_steps=3 format=3 uid="uid://dwkcm1b3245n6"]
+
+[ext_resource type="Script" uid="uid://86y3xnwhugmc" path="res://scenes/terrain/terrain.gd" id="1_hn2sr"]
+
+[sub_resource type="NavigationMesh" id="NavigationMesh_hn2sr"]
+cell_size = 0.5
+cell_height = 0.5
+agent_height = 2.0
+agent_max_climb = 2.0
+
+[node name="Terrain" type="Node3D"]
+script = ExtResource("1_hn2sr")
+
+[node name="NavigationRegion3D" type="NavigationRegion3D" parent="."]
+navigation_mesh = SubResource("NavigationMesh_hn2sr")
+
+[node name="TerrainMesh" type="MeshInstance3D" parent="NavigationRegion3D"]
+skeleton = NodePath("../..")
+
+[node name="TerrainCollision" type="StaticBody3D" parent="."]
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="TerrainCollision"]

@@ -12,15 +12,28 @@ func _ready():
 	print("Is Server:", multiplayer.is_server())
 	print("My ID:", multiplayer.get_unique_id())
 	print("Connected Players:", NetworkManager.players)
+	print("Game Seed:", NetworkManager.game_seed)  # ADD THIS
 	
 	# Spawn local camera for this player (NOT networked!)
 	spawn_local_camera()
+	
+	# Generate terrain with synchronized seed
+	generate_terrain_with_seed()  # ADD THIS
 	
 	# Connect to network signals to update when players join/leave
 	NetworkManager.player_connected.connect(_on_player_joined)
 	NetworkManager.player_disconnected.connect(_on_player_left)
 	
 	update_info()
+
+# ADD THIS NEW FUNCTION
+func generate_terrain_with_seed():
+	# Find terrain node and generate with network seed
+	var terrain = get_node_or_null("Terrain")
+	if terrain and terrain.has_method("generate_terrain"):
+		terrain.generate_terrain(NetworkManager.game_seed)
+	else:
+		push_error("Terrain node not found or doesn't have generate_terrain method!")
 
 func spawn_local_camera():
 	# Create camera instance locally (not synced across network)
