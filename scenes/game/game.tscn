@@ -1,17 +1,17 @@
-[gd_scene load_steps=2 format=3 uid="uid://cmkk6svracks2"]
+[gd_scene load_steps=3 format=3 uid="uid://cmkk6svracks2"]
 
 [ext_resource type="Script" uid="uid://c4kkyoayfdky8" path="res://scenes/game/game.gd" id="1_sul5r"]
+[ext_resource type="PackedScene" uid="uid://c7ctdybvp1hav" path="res://scenes/camera/camera_rig.tscn" id="2_7h61r"]
 
 [node name="Game" type="Node3D"]
 script = ExtResource("1_sul5r")
 
 [node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
 
-[node name="Camera3D" type="Camera3D" parent="."]
-transform = Transform3D(0.9961947, -0.061628412, 0.061628412, 0, 0.70710677, 0.70710677, -0.08715574, -0.70441604, 0.70441604, 0, 0, 0)
-
 [node name="CanvasLayer" type="CanvasLayer" parent="."]
 
 [node name="InfoLabel" type="Label" parent="CanvasLayer"]
 offset_right = 40.0
 offset_bottom = 23.0
+
+[node name="CameraRig" parent="." instance=ExtResource("2_7h61r")]

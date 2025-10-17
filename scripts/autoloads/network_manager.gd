@@ -29,7 +29,7 @@ func host_game(player_name: String, port: int = DEFAULT_PORT) -> bool:
 	multiplayer.multiplayer_peer = peer
 	var host_info = {"name": player_name, "id": 1, "ready": false}
 	players[1] = host_info
-	print("Server started")
+	print("Server started on port ", port)
 	server_started.emit()
 	return true
 
@@ -41,7 +41,7 @@ func join_game(player_name: String, ip_address: String, port: int = DEFAULT_PORT
 		return false
 	multiplayer.multiplayer_peer = peer
 	pending_player_name = player_name
-	print("Connecting...")
+	print("Attempting to connect to ", ip_address, ":", port)
 	return true
 
 func disconnect_from_game():
@@ -52,6 +52,8 @@ func disconnect_from_game():
 
 func _on_player_connected(id: int):
 	print("Player connected: ", id)
+	if multiplayer.is_server():
+		rpc_id(id, "register_player", players[1])
 
 func _on_player_disconnected(id: int):
 	print("Player disconnected: ", id)
@@ -60,7 +62,7 @@ func _on_player_disconnected(id: int):
 	player_disconnected.emit(id)
 
 func _on_connected_to_server():
-	print("Connected to server")
+	print("Successfully connected to server")
 	var my_id = multiplayer.get_unique_id()
 	var my_info = {"name": pending_player_name, "id": my_id, "ready": false}
 	players[my_id] = my_info
@@ -79,24 +81,27 @@ func _on_server_disconnected():
 @rpc("any_peer", "reliable")
 func register_player(player_info: Dictionary):
 	var sender_id = multiplayer.get_remote_sender_id()
-	print("Registering player: ", sender_id, " - ", player_info)
-	players[sender_id] = player_info
-	player_connected.emit(sender_id, player_info)
+	var player_id = player_info.get("id", sender_id)
+	
+	print("Registering player ID: ", player_id, " Name: ", player_info.get("name", "Unknown"))
+	
+	players[player_id] = player_info
+	player_connected.emit(player_id, player_info)
 	
 	if multiplayer.is_server():
-		# Broadcast this new player to all existing players
-		for peer_id in players:
-			if peer_id != sender_id and peer_id != 1:
+		for peer_id in multiplayer.get_peers():
+			if peer_id != player_id:
 				rpc_id(peer_id, "register_player", player_info)
-		# Send all existing players to the new player
-		for peer_id in players:
-			if peer_id != sender_id:
-				rpc_id(sender_id, "register_player", players[peer_id])
+		
+		for existing_id in players:
+			if existing_id != player_id:
+				rpc_id(player_id, "register_player", players[existing_id])
 
-@rpc("any_peer", "reliable")
+@rpc("any_peer", "call_local", "reliable")
 func set_player_ready(peer_id: int, is_ready: bool):
 	if players.has(peer_id):
 		players[peer_id]["ready"] = is_ready
+		print("Player ", peer_id, " ready status: ", is_ready)
 
 func are_all_players_ready() -> bool:
 	for player in players.values():

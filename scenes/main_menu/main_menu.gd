@@ -19,9 +19,9 @@ func _on_join_pressed():
 	NetworkManager.join_game("Client Player", "127.0.0.1")
 
 func _on_server_started():
-	print("Server started! Loading game...")
-	get_tree().change_scene_to_file("res://scenes/game/game.tscn")
+	print("Server started! Going to lobby...")
+	get_tree().change_scene_to_file("res://scenes/main_menu/lobby.tscn")
 
 func _on_connection_succeeded():
-	print("Connected! Loading game...")
-	get_tree().change_scene_to_file("res://scenes/game/game.tscn")
+	print("Connected! Going to lobby...")
+	get_tree().change_scene_to_file("res://scenes/main_menu/lobby.tscn")
