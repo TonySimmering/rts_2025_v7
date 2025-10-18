@@ -1,5 +1,31 @@
-[gd_scene load_steps=2 format=3 uid="uid://dbfdf4weksq3h"]
+[gd_scene load_steps=5 format=3 uid="uid://dbfdf4weksq3h"]
 
 [ext_resource type="PackedScene" uid="uid://kuthd1f62jir" path="res://assets/models/worker.glb" id="1_7vgg6"]
 
-[node name="worker" instance=ExtResource("1_7vgg6")]
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_7vgg6"]
+height = 1.7
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_f7jl4"]
+transparency = 1
+shading_mode = 0
+albedo_color = Color(0, 1, 0, 0.4392157)
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_7vgg6"]
+material = SubResource("StandardMaterial3D_f7jl4")
+height = 0.05
+
+[node name="Worker" type="CharacterBody3D"]
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.85, 0)
+shape = SubResource("CapsuleShape3D_7vgg6")
+
+[node name="Model" type="Node3D" parent="."]
+
+[node name="worker" parent="Model" instance=ExtResource("1_7vgg6")]
+
+[node name="SelectionIndicator" type="MeshInstance3D" parent="."]
+visible = false
+mesh = SubResource("CylinderMesh_7vgg6")
+
+[node name="NavigationAgent3D" type="NavigationAgent3D" parent="."]

@@ -13,7 +13,7 @@ dest_files=["res://.godot/imported/worker.glb-b1e09b27d2484c4047acc38fa6c44ad6.s
 
 [params]
 
-nodes/root_type=""
+nodes/root_type="Node3D"
 nodes/root_name=""
 nodes/root_script=null
 nodes/apply_root_scale=true
