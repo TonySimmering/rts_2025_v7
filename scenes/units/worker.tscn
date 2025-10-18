@@ -1,0 +1,5 @@
+[gd_scene load_steps=2 format=3 uid="uid://dbfdf4weksq3h"]
+
+[ext_resource type="PackedScene" uid="uid://kuthd1f62jir" path="res://assets/models/worker.glb" id="1_7vgg6"]
+
+[node name="worker" instance=ExtResource("1_7vgg6")]
