@@ -29,8 +29,9 @@ var heightmap: Array = []
 var terrain_seed: int = 0
 
 func _ready():
-	if auto_generate:
-		generate_terrain(randi())
+	# Force auto_generate to false, regardless of what's saved in scene
+	auto_generate = false
+	print("Terrain _ready() - auto_generate forcibly set to false")
 
 func generate_terrain(seed_value: int):
 	terrain_seed = seed_value
@@ -39,9 +40,9 @@ func generate_terrain(seed_value: int):
 	generate_heightmap()
 	create_mesh()
 	create_collision()
-	await bake_navigation()  # ADD await here
+	await bake_navigation()  # IMPORTANT: await this
 	print("Terrain generation complete!")
-	
+
 func setup_noise(seed_value: int):
 	noise = FastNoiseLite.new()
 	noise.seed = seed_value
@@ -113,21 +114,53 @@ func create_collision():
 	shape.set_faces(faces)
 	collision_shape.shape = shape
 
-# ADD THIS NEW FUNCTION
 func bake_navigation():
-	print("Baking navigation mesh...")
+	print("  Baking navigation mesh...")
 	
-	# Wait one frame to ensure mesh and collision are fully set up
+	# Verify structure
+	if not navigation_region.has_node("TerrainMesh"):
+		push_error("TerrainMesh not found as child of NavigationRegion3D!")
+		return
+	
+	# Configure NavigationMesh with proper settings
+	if navigation_region.navigation_mesh == null:
+		navigation_region.navigation_mesh = NavigationMesh.new()
+	
+	var nav_mesh = navigation_region.navigation_mesh
+	
+	# Set baking parameters
+	nav_mesh.cell_size = 0.5
+	nav_mesh.cell_height = 0.5
+	nav_mesh.agent_height = 2.0
+	nav_mesh.agent_radius = 0.5
+	nav_mesh.agent_max_climb = 2.0
+	nav_mesh.agent_max_slope = 45.0
+	nav_mesh.region_min_size = 2.0
+	
+	# CRITICAL: Set geometry parsing mode
+	nav_mesh.geometry_parsed_geometry_type = NavigationMesh.PARSED_GEOMETRY_STATIC_COLLIDERS
+	# Try also: NavigationMesh.PARSED_GEOMETRY_BOTH or PARSED_GEOMETRY_MESH_INSTANCES
+	
+	# Wait for scene to be fully ready
+	await get_tree().process_frame
 	await get_tree().process_frame
 	
-	# Simple approach: just call bake
+	# Bake
 	navigation_region.bake_navigation_mesh()
 	
 	# Wait for bake to complete
 	await get_tree().process_frame
 	
-	print("Navigation mesh baked! Triangles: ", navigation_region.navigation_mesh.get_polygon_count())
-
+	var poly_count = navigation_region.navigation_mesh.get_polygon_count()
+	print("  NavMesh baked! Polygons: ", poly_count)
+	
+	if poly_count == 0:
+		push_error("Still 0 polygons! Trying alternative geometry type...")
+		nav_mesh.geometry_parsed_geometry_type = NavigationMesh.PARSED_GEOMETRY_MESH_INSTANCES
+		navigation_region.bake_navigation_mesh()
+		await get_tree().process_frame
+		poly_count = navigation_region.navigation_mesh.get_polygon_count()
+		print("  After retry: ", poly_count, " polygons")
 func get_height_at_position(world_pos: Vector3) -> float:
 	var local_x = int(world_pos.x / terrain_scale)
 	var local_z = int(world_pos.z / terrain_scale)

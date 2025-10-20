@@ -1,50 +1,75 @@
 extends CharacterBody3D
 
 # Network sync
-@export var player_id: int = 0  # Which player owns this unit
-@export var unit_id: int = 0    # Unique ID for this unit
+@export var player_id: int = 0
+@export var unit_id: int = 0
 
 # References
 @onready var navigation_agent: NavigationAgent3D = $NavigationAgent3D
 @onready var selection_indicator: MeshInstance3D = $SelectionIndicator
 @onready var model: Node3D = $Model
-@onready var animation_player: AnimationPlayer = $Model/worker/AnimationPlayer
 
 # Movement
 @export var move_speed: float = 5.0
 var is_selected: bool = false
-var current_animation: String = "idle"
+var current_animation: String = "Idle"
+var animation_player: AnimationPlayer = null
 
 # State
 enum UnitState { IDLE, MOVING, CHOPPING }
 var state: UnitState = UnitState.IDLE
 
 func _ready():
-	# Wait for first physics frame for NavigationServer to sync
+	print("\n=== WORKER UNIT READY ===")
+	print("Worker position: ", global_position)
+	
+	# Try multiple methods to find AnimationPlayer
+	animation_player = find_child("AnimationPlayer", true, false)
+	
+	if not animation_player:
+		# Try getting it from the GLB node directly
+		var glb_node = model.get_child(0) if model.get_child_count() > 0 else null
+		if glb_node:
+			print("Found GLB node: ", glb_node.name)
+			animation_player = glb_node.find_child("AnimationPlayer", true, false)
+	
+	if animation_player:
+		print("✓ AnimationPlayer found at: ", animation_player.get_path())
+		print("  Available animations: ", animation_player.get_animation_list())
+		print("  Current animation: ", animation_player.current_animation)
+		print("  Is playing: ", animation_player.is_playing())
+		
+		# Try to play idle
+		play_animation("Idle")
+		
+		# Double-check after trying to play
+		await get_tree().create_timer(0.1).timeout
+		print("  After play attempt - Is playing: ", animation_player.is_playing())
+		print("  Current animation: ", animation_player.current_animation)
+	else:
+		push_error("✗ AnimationPlayer NOT found!")
+		print("Model children:")
+		for child in model.get_children():
+			print("  - ", child.name, " (", child.get_class(), ")")
+			if child.get_child_count() > 0:
+				for subchild in child.get_children():
+					print("    - ", subchild.name, " (", subchild.get_class(), ")")
+	
 	call_deferred("setup_agent")
-	
-	# Start with idle animation
-	play_animation("Idle")
-	
-	# Hide selection indicator by default
 	selection_indicator.visible = false
+	print("=========================\n")
 
 func setup_agent():
-	# Wait for navigation map to be ready
 	await get_tree().physics_frame
-	
 	navigation_agent.velocity_computed.connect(_on_velocity_computed)
 
 func _physics_process(delta):
 	match state:
 		UnitState.MOVING:
 			process_movement(delta)
-		UnitState.CHOPPING:
-			# Will implement later
-			pass
 		UnitState.IDLE:
-			if current_animation != "idle":
-				play_animation("idle")
+			if animation_player and current_animation != "Idle":
+				play_animation("Idle")
 
 func process_movement(delta):
 	if navigation_agent.is_navigation_finished():
@@ -55,47 +80,45 @@ func process_movement(delta):
 	var next_position = navigation_agent.get_next_path_position()
 	var direction = (next_position - global_position).normalized()
 	
-	# Face movement direction
 	if direction.length() > 0.01:
 		var target_rotation = atan2(direction.x, direction.z)
 		rotation.y = lerp_angle(rotation.y, target_rotation, delta * 10.0)
 	
-	# Move using navigation agent avoidance
 	var desired_velocity = direction * move_speed
 	navigation_agent.set_velocity(desired_velocity)
 	
-	# Play walk animation
-	if current_animation != "walk":
+	if animation_player and current_animation != "Walk":
 		play_animation("Walk")
 
 func _on_velocity_computed(safe_velocity: Vector3):
-	# This is called by NavigationAgent with collision-free velocity
 	velocity = safe_velocity
 	move_and_slide()
 
 func move_to_position(target_position: Vector3):
-	"""Command unit to move to a position"""
 	navigation_agent.target_position = target_position
 	state = UnitState.MOVING
 
 func select():
-	"""Select this unit"""
 	is_selected = true
 	selection_indicator.visible = true
 
 func deselect():
-	"""Deselect this unit"""
 	is_selected = false
 	selection_indicator.visible = false
 
 func play_animation(anim_name: String):
-	"""Play an animation if it exists"""
+	if not animation_player:
+		push_warning("Cannot play animation - AnimationPlayer is null")
+		return
+	
+	print("Attempting to play animation: ", anim_name)
+	
 	if animation_player.has_animation(anim_name):
 		current_animation = anim_name
 		animation_player.play(anim_name)
+		print("  ✓ Playing: ", anim_name)
 	else:
-		push_warning("Animation not found: ", anim_name)
+		push_warning("Animation '", anim_name, "' not found. Available: ", animation_player.get_animation_list())
 
 func get_owner_id() -> int:
-	"""Return which player owns this unit"""
 	return player_id
