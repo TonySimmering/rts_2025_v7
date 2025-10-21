@@ -13,15 +13,15 @@ extends Node3D
 @export var rotation_speed: float = 90.0  # degrees per second
 
 # Zoom settings
-@export var zoom_speed: float = 2.0
-@export var min_zoom_distance: float = 5.0
-@export var max_zoom_distance: float = 40.0
+@export var zoom_speed: float = 1.5
+@export var min_zoom_distance: float = 7.0
+@export var max_zoom_distance: float = 20.0
 @export var min_pitch: float = -20.0  # looking more horizontal
 @export var max_pitch: float = -70.0  # looking more vertical
 
 # Map boundaries (will set these later)
 @export var map_min: Vector3 = Vector3(-50, 0, -50)
-@export var map_max: Vector3 = Vector3(50, 0, 50)
+@export var map_max: Vector3 = Vector3(128, 0, 128)
 
 # Smoothing
 @export var movement_smoothing: float = 10.0

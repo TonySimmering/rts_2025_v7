@@ -10,7 +10,8 @@ extends CharacterBody3D
 @onready var model: Node3D = $Model
 
 # Movement
-@export var move_speed: float = 5.0
+@export var move_speed: float = 2.5
+@export var gravity: float = 20.0  # ADD THIS
 var is_selected: bool = false
 var current_animation: String = "Idle"
 var animation_player: AnimationPlayer = null
@@ -45,63 +46,54 @@ func _ready():
 	print("=========================\n")
 
 func setup_agent():
-	# Wait for NavigationServer to be ready
 	await get_tree().physics_frame
-	await get_tree().physics_frame  # Extra wait
+	await get_tree().physics_frame
 	await get_tree().physics_frame
 	
 	print("NavigationAgent setup:")
 	print("  Map RID valid: ", navigation_agent.get_navigation_map().is_valid())
-	print("  Agent avoidance enabled: ", navigation_agent.avoidance_enabled)
-	
-	navigation_agent.velocity_computed.connect(_on_velocity_computed)
+	# No need to connect velocity_computed when not using avoidance
 
 func _physics_process(delta):
+	# Apply gravity when not on floor
+	if not is_on_floor():
+		velocity.y -= gravity * delta
+	
 	match state:
 		UnitState.MOVING:
 			process_movement(delta)
 		UnitState.IDLE:
+			# Still apply gravity and movement even when idle
+			move_and_slide()
 			if animation_player and current_animation != "Idle":
 				play_animation("Idle")
 
 func process_movement(delta):
-	# Debug output
-	if Engine.get_physics_frames() % 60 == 0:  # Print every 2 seconds
-		print("Movement debug:")
-		print("  Position: ", global_position)
-		print("  Target: ", navigation_agent.target_position)
-		print("  Distance remaining: ", navigation_agent.distance_to_target())
-		print("  Is nav finished: ", navigation_agent.is_navigation_finished())
-		print("  Is target reachable: ", navigation_agent.is_target_reachable())
-		print("  Path exists: ", not navigation_agent.is_navigation_finished())
-	
 	if navigation_agent.is_navigation_finished():
 		print("Navigation finished! Stopping.")
 		state = UnitState.IDLE
-		velocity = Vector3.ZERO
+		velocity.x = 0
+		velocity.z = 0
+		# Don't zero Y - let gravity handle it
 		play_animation("Idle")
 		return
 	
 	var next_position = navigation_agent.get_next_path_position()
 	var direction = (next_position - global_position).normalized()
 	
-	print("Next pos: ", next_position, " Direction: ", direction)  # ADD THIS
-	
 	if direction.length() > 0.01:
 		var target_rotation = atan2(direction.x, direction.z)
 		rotation.y = lerp_angle(rotation.y, target_rotation, delta * 10.0)
 	
-	var desired_velocity = direction * move_speed
-	navigation_agent.set_velocity(desired_velocity)
+	# Apply horizontal movement, keep vertical velocity for gravity
+	velocity.x = direction.x * move_speed
+	velocity.z = direction.z * move_speed
+	# velocity.y is handled by gravity in _physics_process
+	
+	move_and_slide()
 	
 	if animation_player and current_animation != "Walk":
 		play_animation("Walk")
-
-func _on_velocity_computed(safe_velocity: Vector3):
-	print("Velocity computed: ", safe_velocity)  # ADD THIS
-	velocity = safe_velocity
-	move_and_slide()
-	print("After move_and_slide, position: ", global_position)  # ADD THIS
 
 func move_to_position(target_position: Vector3):
 	print("\n=== MOVE COMMAND ===")

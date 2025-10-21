@@ -7,14 +7,14 @@ extends Node3D
 @export var terrain_scale: float = 1.0
 
 @export_group("Height Settings")
-@export var max_height: float = 10.0
-@export var min_height: float = -10.0
+@export var max_height: float = 3.0  # CHANGED from 10.0
+@export var min_height: float = -1.0  # CHANGED from -10.0
 
 @export_group("Noise Settings")
-@export var noise_frequency: float = 0.05
-@export var noise_octaves: int = 4
-@export var noise_lacunarity: float = 2.0
-@export var noise_gain: float = 0.5
+@export var noise_frequency: float = 0.02  # CHANGED from 0.05 - larger features
+@export var noise_octaves: int = 3  # CHANGED from 4 - smoother
+@export var noise_lacunarity: float = 2.0  # Same
+@export var noise_gain: float = 0.4  # CHANGED from 0.5 - less detail influence
 
 @export_group("Generation")
 @export var auto_generate: bool = false

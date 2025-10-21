@@ -17,9 +17,8 @@ func spawn_starting_units(player_id: int, spawn_center: Vector3):
 	if not spawned_units.has(player_id):
 		spawned_units[player_id] = []
 	
-	# Spawn workers in a circle around spawn center
 	for i in range(WORKERS_PER_PLAYER):
-		var angle = (float(i) / WORKERS_PER_PLAYER) * TAU  # Full circle
+		var angle = (float(i) / WORKERS_PER_PLAYER) * TAU
 		var offset = Vector3(
 			cos(angle) * SPAWN_RADIUS,
 			0,
@@ -28,11 +27,12 @@ func spawn_starting_units(player_id: int, spawn_center: Vector3):
 		
 		var spawn_pos = spawn_center + offset
 		
-		# Snap to terrain height
-		if terrain and terrain.has_method("get_height_at_position"):
-			spawn_pos.y = terrain.get_height_at_position(spawn_pos)
+		# FIX: Query NavMesh for correct spawn height instead of terrain heightmap
+		if terrain:
+			var nav_map = get_tree().root.get_world_3d().navigation_map
+			var closest_point = NavigationServer3D.map_get_closest_point(nav_map, spawn_pos)
+			spawn_pos.y = closest_point.y + 0.1  # Slightly above NavMesh
 		
-		# Spawn worker
 		var worker = WORKER_SCENE.instantiate()
 		worker.global_position = spawn_pos
 		worker.player_id = player_id
@@ -42,8 +42,6 @@ func spawn_starting_units(player_id: int, spawn_center: Vector3):
 		spawned_units[player_id].append(worker)
 		
 		print("  Spawned worker ", i, " at ", spawn_pos)
-	
-	print("Finished spawning ", WORKERS_PER_PLAYER, " workers for player ", player_id)
 
 func get_spawn_location_for_player(player_id: int, map_size: Vector2) -> Vector3:
 	"""Calculate spawn location based on player ID"""
