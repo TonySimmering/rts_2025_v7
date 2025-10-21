@@ -10,9 +10,6 @@ agent_max_climb = 2.0
 
 [node name="Terrain" type="Node3D"]
 script = ExtResource("1_hn2sr")
-terrain_width = 128
-terrain_depth = 128
-terrain_scale = 1.0
 
 [node name="NavigationRegion3D" type="NavigationRegion3D" parent="."]
 navigation_mesh = SubResource("NavigationMesh_hn2sr")
@@ -20,6 +17,6 @@ navigation_mesh = SubResource("NavigationMesh_hn2sr")
 [node name="TerrainMesh" type="MeshInstance3D" parent="NavigationRegion3D"]
 skeleton = NodePath("../..")
 
-[node name="TerrainCollision" type="StaticBody3D" parent="."]
+[node name="TerrainCollision" type="StaticBody3D" parent="NavigationRegion3D"]
 
-[node name="CollisionShape3D" type="CollisionShape3D" parent="TerrainCollision"]
+[node name="CollisionShape3D" type="CollisionShape3D" parent="NavigationRegion3D/TerrainCollision"]

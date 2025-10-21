@@ -20,14 +20,14 @@ enum UnitState { IDLE, MOVING, CHOPPING }
 var state: UnitState = UnitState.IDLE
 
 func _ready():
+	add_to_group("units")
+	
 	print("\n=== WORKER UNIT READY ===")
 	print("Worker position: ", global_position)
 	
-	# Try multiple methods to find AnimationPlayer
 	animation_player = find_child("AnimationPlayer", true, false)
 	
 	if not animation_player:
-		# Try getting it from the GLB node directly
 		var glb_node = model.get_child(0) if model.get_child_count() > 0 else null
 		if glb_node:
 			print("Found GLB node: ", glb_node.name)
@@ -36,31 +36,24 @@ func _ready():
 	if animation_player:
 		print("✓ AnimationPlayer found at: ", animation_player.get_path())
 		print("  Available animations: ", animation_player.get_animation_list())
-		print("  Current animation: ", animation_player.current_animation)
-		print("  Is playing: ", animation_player.is_playing())
-		
-		# Try to play idle
 		play_animation("Idle")
-		
-		# Double-check after trying to play
-		await get_tree().create_timer(0.1).timeout
-		print("  After play attempt - Is playing: ", animation_player.is_playing())
-		print("  Current animation: ", animation_player.current_animation)
 	else:
 		push_error("✗ AnimationPlayer NOT found!")
-		print("Model children:")
-		for child in model.get_children():
-			print("  - ", child.name, " (", child.get_class(), ")")
-			if child.get_child_count() > 0:
-				for subchild in child.get_children():
-					print("    - ", subchild.name, " (", subchild.get_class(), ")")
 	
 	call_deferred("setup_agent")
 	selection_indicator.visible = false
 	print("=========================\n")
 
 func setup_agent():
+	# Wait for NavigationServer to be ready
 	await get_tree().physics_frame
+	await get_tree().physics_frame  # Extra wait
+	await get_tree().physics_frame
+	
+	print("NavigationAgent setup:")
+	print("  Map RID valid: ", navigation_agent.get_navigation_map().is_valid())
+	print("  Agent avoidance enabled: ", navigation_agent.avoidance_enabled)
+	
 	navigation_agent.velocity_computed.connect(_on_velocity_computed)
 
 func _physics_process(delta):
@@ -72,13 +65,27 @@ func _physics_process(delta):
 				play_animation("Idle")
 
 func process_movement(delta):
+	# Debug output
+	if Engine.get_physics_frames() % 60 == 0:  # Print every 2 seconds
+		print("Movement debug:")
+		print("  Position: ", global_position)
+		print("  Target: ", navigation_agent.target_position)
+		print("  Distance remaining: ", navigation_agent.distance_to_target())
+		print("  Is nav finished: ", navigation_agent.is_navigation_finished())
+		print("  Is target reachable: ", navigation_agent.is_target_reachable())
+		print("  Path exists: ", not navigation_agent.is_navigation_finished())
+	
 	if navigation_agent.is_navigation_finished():
+		print("Navigation finished! Stopping.")
 		state = UnitState.IDLE
 		velocity = Vector3.ZERO
+		play_animation("Idle")
 		return
 	
 	var next_position = navigation_agent.get_next_path_position()
 	var direction = (next_position - global_position).normalized()
+	
+	print("Next pos: ", next_position, " Direction: ", direction)  # ADD THIS
 	
 	if direction.length() > 0.01:
 		var target_rotation = atan2(direction.x, direction.z)
@@ -91,12 +98,38 @@ func process_movement(delta):
 		play_animation("Walk")
 
 func _on_velocity_computed(safe_velocity: Vector3):
+	print("Velocity computed: ", safe_velocity)  # ADD THIS
 	velocity = safe_velocity
 	move_and_slide()
+	print("After move_and_slide, position: ", global_position)  # ADD THIS
 
 func move_to_position(target_position: Vector3):
-	navigation_agent.target_position = target_position
-	state = UnitState.MOVING
+	print("\n=== MOVE COMMAND ===")
+	print("Worker at: ", global_position)
+	print("Target: ", target_position)
+	
+	# Get the navigation map from the world
+	var nav_map = get_world_3d().navigation_map
+	
+	# Query path directly from NavigationServer
+	var path = NavigationServer3D.map_get_path(
+		nav_map,
+		global_position,
+		target_position,
+		true  # optimize
+	)
+	
+	print("Path points: ", path.size())
+	
+	if path.size() > 0:
+		print("✓ Path found with ", path.size(), " waypoints")
+		# Store path and use it
+		navigation_agent.target_position = target_position
+		state = UnitState.MOVING
+	else:
+		print("✗ No path found!")
+	
+	print("===================\n")
 
 func select():
 	is_selected = true
@@ -108,15 +141,11 @@ func deselect():
 
 func play_animation(anim_name: String):
 	if not animation_player:
-		push_warning("Cannot play animation - AnimationPlayer is null")
 		return
-	
-	print("Attempting to play animation: ", anim_name)
 	
 	if animation_player.has_animation(anim_name):
 		current_animation = anim_name
 		animation_player.play(anim_name)
-		print("  ✓ Playing: ", anim_name)
 	else:
 		push_warning("Animation '", anim_name, "' not found. Available: ", animation_player.get_animation_list())
 
