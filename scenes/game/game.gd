@@ -59,7 +59,10 @@ func setup_spawn_system():  # ADD THIS FUNCTION
 	add_child(spawn_manager)
 	print("Spawn system initialized")
 
-func spawn_starting_units():  # ADD THIS FUNCTION
+func spawn_starting_units():
+	if not multiplayer.is_server():
+		return
+	
 	await get_tree().create_timer(0.5).timeout
 
 	# Get terrain size for spawn calculation

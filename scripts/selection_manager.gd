@@ -81,14 +81,16 @@ func _on_right_mouse_down(mouse_pos: Vector2):
 		var target_position = result.position
 		print("Move command to: ", target_position, " for ", selected_units.size(), " units")
 		
-		# Calculate formation positions if multiple units
+		# Calculate formation positions
 		var formation_positions = _calculate_formation_positions(target_position, selected_units.size())
 		
-		# Issue move commands
+		# Issue move commands (only for units we own)
 		for i in range(selected_units.size()):
 			var unit = selected_units[i]
 			if is_instance_valid(unit):
-				unit.move_to_position(formation_positions[i])
+				# CHANGED: Check if we own this unit
+				if unit.is_multiplayer_authority():
+					unit.move_to_position(formation_positions[i])
 		
 		move_command_issued.emit(target_position, selected_units)
 
