@@ -60,6 +60,8 @@ func setup_spawn_system():  # ADD THIS FUNCTION
 	print("Spawn system initialized")
 
 func spawn_starting_units():  # ADD THIS FUNCTION
+	await get_tree().create_timer(0.5).timeout
+
 	# Get terrain size for spawn calculation
 	var terrain = get_node_or_null("Terrain")
 	var map_size = Vector2(128, 128)  # Default from terrain settings
@@ -68,7 +70,16 @@ func spawn_starting_units():  # ADD THIS FUNCTION
 	for player_id in NetworkManager.players:
 		var spawn_center = spawn_manager.get_spawn_location_for_player(player_id, map_size)
 		spawn_manager.spawn_starting_units(player_id, spawn_center)
-
+		
+	if terrain:
+		print("\n=== TERRAIN DEBUG ===")
+		print("Terrain global position: ", terrain.global_position)
+		var nav_region = terrain.get_node_or_null("NavigationRegion3D")
+		if nav_region:
+			print("NavigationRegion global position: ", nav_region.global_position)
+			print("NavigationRegion transform: ", nav_region.transform)
+		print("=====================\n")
+		
 func _on_selection_changed(selected_units: Array):
 	print("Selection changed: ", selected_units.size(), " units selected")
 	update_info()

@@ -108,29 +108,37 @@ func move_to_position(target_position: Vector3):
 	print("Worker at: ", global_position)
 	print("Target: ", target_position)
 	
-	# Get the navigation map from the world
+	# Get the navigation map
 	var nav_map = get_world_3d().navigation_map
 	
-	# Query path directly from NavigationServer
+	# DEBUG: Try to get the closest point on navmesh
+	var closest_point = NavigationServer3D.map_get_closest_point(nav_map, global_position)
+	print("Closest NavMesh point to worker: ", closest_point)
+	print("Distance from worker to NavMesh: ", global_position.distance_to(closest_point))
+	
+	var closest_target = NavigationServer3D.map_get_closest_point(nav_map, target_position)
+	print("Closest NavMesh point to target: ", closest_target)
+	print("Distance from target to NavMesh: ", target_position.distance_to(closest_target))
+	
+	# Query path
 	var path = NavigationServer3D.map_get_path(
 		nav_map,
 		global_position,
 		target_position,
-		true  # optimize
+		true
 	)
 	
 	print("Path points: ", path.size())
 	
 	if path.size() > 0:
 		print("✓ Path found with ", path.size(), " waypoints")
-		# Store path and use it
 		navigation_agent.target_position = target_position
 		state = UnitState.MOVING
 	else:
 		print("✗ No path found!")
 	
 	print("===================\n")
-
+	
 func select():
 	is_selected = true
 	selection_indicator.visible = true

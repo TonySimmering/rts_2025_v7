@@ -137,7 +137,6 @@ func bake_navigation():
 	nav_mesh.agent_max_slope = 45.0
 	nav_mesh.region_min_size = 2.0
 	
-	# Wait for physics
 	await get_tree().physics_frame
 	await get_tree().physics_frame
 	
@@ -148,29 +147,35 @@ func bake_navigation():
 	source_geometry.add_faces(mesh_faces, mesh_transform)
 	
 	print("  Added ", mesh_faces.size() / 3, " triangles to source geometry")
+	print("  Mesh transform: ", mesh_transform)
 	
 	# Bake from source geometry
 	print("  Baking from source geometry...")
 	NavigationServer3D.bake_from_source_geometry_data(nav_mesh, source_geometry)
 	
-	# CRITICAL: Enable the navigation region
-	navigation_region.enabled = true
-	
-	# Wait for NavigationServer to register the map
-	await get_tree().process_frame
-	await get_tree().physics_frame
-	await get_tree().physics_frame  # Extra wait for server sync
-	
 	var poly_count = nav_mesh.get_polygon_count()
 	print("  NavMesh baked! Polygons: ", poly_count)
 	
-	# Verify it's actually in the world's navigation map
+	# CRITICAL: Force NavigationRegion to update by toggling it
+	navigation_region.enabled = false
+	await get_tree().process_frame
+	navigation_region.enabled = true
+	
+	# Wait for NavigationServer to register
+	await get_tree().process_frame
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	
+	# Verify
 	var world_nav_map = get_world_3d().navigation_map
 	print("  World navigation map RID: ", world_nav_map)
 	print("  NavigationRegion map RID: ", navigation_region.get_navigation_map())
 	
-	if poly_count == 0:
-		push_error("Manual baking also failed!")
+	# Test if NavMesh is accessible
+	var test_point = Vector3(64, 0, 64)  # Center of map
+	var closest = NavigationServer3D.map_get_closest_point(world_nav_map, test_point)
+	print("  Test: Closest point to (64,0,64): ", closest)
+	print("  Test: Distance: ", test_point.distance_to(closest))
 		
 func get_height_at_position(world_pos: Vector3) -> float:
 	var local_x = int(world_pos.x / terrain_scale)
