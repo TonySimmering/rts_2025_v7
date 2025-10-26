@@ -12,9 +12,18 @@ extends CharacterBody3D
 # Movement
 @export var move_speed: float = 2.5
 @export var gravity: float = 20.0
+@export var stuck_check_interval: float = 1.0  # Check every second
+@export var stuck_distance_threshold: float = 0.5  # Must move at least this far
+@export var max_stuck_time: float = 3.0  # Recalculate after 3 seconds stuck
+
 var is_selected: bool = false
 var current_animation: String = "Idle"
 var animation_player: AnimationPlayer = null
+
+# Stuck detection
+var last_check_position: Vector3 = Vector3.ZERO
+var stuck_timer: float = 0.0
+var check_timer: float = 0.0
 
 # State
 enum UnitState { IDLE, MOVING, CHOPPING }
@@ -76,6 +85,26 @@ func process_movement(delta):
 		play_animation("Idle")
 		return
 	
+	# Stuck detection
+	check_timer += delta
+	if check_timer >= stuck_check_interval:
+		check_timer = 0.0
+		
+		var distance_moved = global_position.distance_to(last_check_position)
+		if distance_moved < stuck_distance_threshold:
+			stuck_timer += stuck_check_interval
+			
+			if stuck_timer >= max_stuck_time:
+				print("Unit stuck! Recalculating path...")
+				# Recalculate path
+				var target = navigation_agent.target_position
+				navigation_agent.target_position = target
+				stuck_timer = 0.0
+		else:
+			stuck_timer = 0.0  # Reset if making progress
+		
+		last_check_position = global_position
+	
 	var next_position = navigation_agent.get_next_path_position()
 	var direction = (next_position - global_position).normalized()
 	
@@ -107,7 +136,14 @@ func move_to_position(target_position: Vector3):
 @rpc("any_peer", "call_local", "reliable")
 func move_to_position_rpc(target_position: Vector3):
 	"""Execute move command on all clients"""
+	# Validate target is reachable
 	navigation_agent.target_position = target_position
+	
+	# Reset stuck detection
+	stuck_timer = 0.0
+	check_timer = 0.0
+	last_check_position = global_position
+	
 	state = UnitState.MOVING
 	print("Unit moving to: ", target_position)
 

@@ -8,25 +8,25 @@ extends Control
 @onready var settings_back_button: Button = %SettingsBackButton
 
 func _ready() -> void:
-    host_button.pressed.connect(_on_host_game_pressed)
-    join_button.pressed.connect(_on_join_game_pressed)
-    settings_button.pressed.connect(_on_settings_pressed)
-    quit_button.pressed.connect(_on_quit_pressed)
-    settings_back_button.pressed.connect(_on_settings_back_pressed)
+	host_button.pressed.connect(_on_host_game_pressed)
+	join_button.pressed.connect(_on_join_game_pressed)
+	settings_button.pressed.connect(_on_settings_pressed)
+	quit_button.pressed.connect(_on_quit_pressed)
+	settings_back_button.pressed.connect(_on_settings_back_pressed)
 
 func _on_host_game_pressed() -> void:
-    get_tree().set_meta("is_host", true)
-    get_tree().change_scene_to_file("res://Lobby.tscn")
+	get_tree().set_meta("is_host", true)
+	get_tree().change_scene_to_file("res://Lobby.tscn")
 
 func _on_join_game_pressed() -> void:
-    get_tree().set_meta("is_host", false)
-    get_tree().change_scene_to_file("res://JoinMenu.tscn")
+	get_tree().set_meta("is_host", false)
+	get_tree().change_scene_to_file("res://JoinMenu.tscn")
 
 func _on_settings_pressed() -> void:
-    settings_window.popup_centered()
+	settings_window.popup_centered()
 
 func _on_settings_back_pressed() -> void:
-    settings_window.hide()
+	settings_window.hide()
 
 func _on_quit_pressed() -> void:
-    get_tree().quit()
+	get_tree().quit()

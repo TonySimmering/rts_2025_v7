@@ -11,11 +11,19 @@ var is_box_selecting: bool = false
 var box_select_start: Vector2 = Vector2.ZERO
 var box_select_end: Vector2 = Vector2.ZERO
 
+# Formation system
+var current_formation: FormationManager.FormationType = FormationManager.FormationType.LINE
+var is_rotating_formation: bool = false
+var formation_rotation: float = 0.0
+var formation_center: Vector3 = Vector3.ZERO
+var rotation_start_pos: Vector2 = Vector2.ZERO
+
 # Camera reference
 var camera: Camera3D = null
 
 # Input settings
 const SELECTION_BOX_MIN_SIZE = 5.0
+const ROTATION_DRAG_THRESHOLD = 10.0  # Pixels to start rotation
 
 func _ready():
 	pass
@@ -34,15 +42,19 @@ func _input(event):
 		else:
 			_on_left_mouse_up(event.position)
 	
-	# Right mouse button - movement command  # ADD THIS
+	# Right mouse button - movement command with rotation
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_RIGHT:
 		if event.pressed and selected_units.size() > 0:
 			_on_right_mouse_down(event.position)
+		else:
+			_on_right_mouse_up()
 	
-	# Mouse motion for box select
+	# Mouse motion for box select and formation rotation
 	if event is InputEventMouseMotion:
 		if is_box_selecting:
 			box_select_end = event.position
+		elif is_rotating_formation:
+			_update_formation_rotation(event.position)
 
 func _on_left_mouse_down(mouse_pos: Vector2):
 	box_select_start = mouse_pos
@@ -64,7 +76,6 @@ func _on_left_mouse_up(mouse_pos: Vector2):
 	
 	is_box_selecting = false
 
-# ADD THIS NEW FUNCTION
 func _on_right_mouse_down(mouse_pos: Vector2):
 	# Raycast to find target position
 	var from = camera.project_ray_origin(mouse_pos)
@@ -78,50 +89,45 @@ func _on_right_mouse_down(mouse_pos: Vector2):
 	var result = space_state.intersect_ray(query)
 	
 	if result:
-		var target_position = result.position
-		print("Move command to: ", target_position, " for ", selected_units.size(), " units")
-		
-		# Calculate formation positions
-		var formation_positions = _calculate_formation_positions(target_position, selected_units.size())
-		
-		# Issue move commands (only for units we own)
-		for i in range(selected_units.size()):
-			var unit = selected_units[i]
-			if is_instance_valid(unit):
-				# CHANGED: Check if we own this unit
-				if unit.is_multiplayer_authority():
-					unit.move_to_position(formation_positions[i])
-		
-		move_command_issued.emit(target_position, selected_units)
+		formation_center = result.position
+		rotation_start_pos = mouse_pos
+		is_rotating_formation = true
+		formation_rotation = 0.0
 
-# ADD THIS NEW FUNCTION
-func _calculate_formation_positions(center: Vector3, unit_count: int) -> Array:
-	var positions = []
+func _on_right_mouse_up():
+	if not is_rotating_formation:
+		return
 	
-	if unit_count == 1:
-		positions.append(center)
-		return positions
+	is_rotating_formation = false
 	
-	# Simple grid formation
-	var spacing = 2.0  # Distance between units
-	var columns = ceil(sqrt(unit_count))
-	var rows = ceil(unit_count / columns)
+	# Issue move command with formation
+	var formation_positions = FormationManager.calculate_formation_positions(
+		formation_center,
+		selected_units.size(),
+		current_formation,
+		formation_rotation
+	)
 	
-	var start_x = center.x - (columns - 1) * spacing * 0.5
-	var start_z = center.z - (rows - 1) * spacing * 0.5
+	print("Move command to: ", formation_center, " with angle: ", rad_to_deg(formation_rotation), " degrees")
 	
-	for i in range(unit_count):
-		var col = i % int(columns)
-		var row = i / int(columns)
-		
-		var pos = Vector3(
-			start_x + col * spacing,
-			center.y,
-			start_z + row * spacing
-		)
-		positions.append(pos)
+	# Issue move commands
+	for i in range(selected_units.size()):
+		var unit = selected_units[i]
+		if is_instance_valid(unit) and unit.is_multiplayer_authority():
+			unit.move_to_position(formation_positions[i])
 	
-	return positions
+	move_command_issued.emit(formation_center, selected_units)
+
+func _update_formation_rotation(mouse_pos: Vector2):
+	var drag_distance = mouse_pos.distance_to(rotation_start_pos)
+	
+	if drag_distance < ROTATION_DRAG_THRESHOLD:
+		formation_rotation = 0.0
+		return
+	
+	# Calculate angle from formation center
+	var delta = mouse_pos - rotation_start_pos
+	formation_rotation = atan2(delta.x, -delta.y)  # Negative Y because screen coords
 
 func _handle_single_select(mouse_pos: Vector2):
 	var from = camera.project_ray_origin(mouse_pos)
