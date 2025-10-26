@@ -129,13 +129,16 @@ func bake_navigation():
 	
 	var nav_mesh = navigation_region.navigation_mesh
 	
-	nav_mesh.cell_size = 0.5
-	nav_mesh.cell_height = 0.5
-	nav_mesh.agent_height = 2.0
-	nav_mesh.agent_radius = 0.5
-	nav_mesh.agent_max_climb = 2.0
-	nav_mesh.agent_max_slope = 45.0
-	nav_mesh.region_min_size = 2.0
+	# MUCH MORE PERMISSIVE SETTINGS
+	nav_mesh.cell_size = 1.0  # Larger cells = more coverage
+	nav_mesh.cell_height = 0.2
+	nav_mesh.agent_height = 1.8  # Shorter agent = fits more places
+	nav_mesh.agent_radius = 0.3  # Smaller radius = fits more places
+	nav_mesh.agent_max_climb = 3.0  # INCREASED - can climb steeper
+	nav_mesh.agent_max_slope = 60.0  # INCREASED - can walk steeper slopes
+	nav_mesh.region_min_size = 0.5  # DECREASED - allow smaller regions
+	nav_mesh.detail_sample_distance = 6.0  # Less detail = better coverage
+	nav_mesh.detail_sample_max_error = 1.0
 	
 	await get_tree().physics_frame
 	await get_tree().physics_frame
@@ -156,6 +159,10 @@ func bake_navigation():
 	var poly_count = nav_mesh.get_polygon_count()
 	print("  NavMesh baked! Polygons: ", poly_count)
 	
+	if poly_count < 500:
+		push_warning("  ⚠ Low NavMesh coverage! Only ", poly_count, " polygons")
+		push_warning("  ⚠ Consider: flatter terrain, or more permissive NavMesh settings")
+	
 	# CRITICAL: Force NavigationRegion to update by toggling it
 	navigation_region.enabled = false
 	await get_tree().process_frame
@@ -171,11 +178,19 @@ func bake_navigation():
 	print("  World navigation map RID: ", world_nav_map)
 	print("  NavigationRegion map RID: ", navigation_region.get_navigation_map())
 	
-	# Test if NavMesh is accessible
-	var test_point = Vector3(64, 0, 64)  # Center of map
-	var closest = NavigationServer3D.map_get_closest_point(world_nav_map, test_point)
-	print("  Test: Closest point to (64,0,64): ", closest)
-	print("  Test: Distance: ", test_point.distance_to(closest))
+	# Test multiple points to verify coverage
+	var test_points = [
+		Vector3(64, 0, 64),  # Center
+		Vector3(32, 0, 32),  # Near spawn
+		Vector3(96, 0, 96),  # Far corner
+	]
+	
+	print("  Testing NavMesh coverage:")
+	for test_point in test_points:
+		var closest = NavigationServer3D.map_get_closest_point(world_nav_map, test_point)
+		var distance = test_point.distance_to(closest)
+		var status = "✓ GOOD" if distance < 5.0 else "✗ BAD"
+		print("    ", test_point, " -> ", closest, " (", distance, "m) ", status)
 		
 func get_height_at_position(world_pos: Vector3) -> float:
 	var local_x = int(world_pos.x / terrain_scale)

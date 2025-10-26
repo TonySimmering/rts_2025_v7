@@ -117,7 +117,15 @@ func update_info():
 	text += "Players connected: " + str(NetworkManager.get_player_count()) + "\n"
 	
 	if selection_manager:
-		text += "Selected units: " + str(selection_manager.get_selected_units().size()) + "\n"
+		var selected = selection_manager.get_selected_units()
+		text += "Selected units: " + str(selected.size()) + "\n"
+		
+		# Show command queue for first selected unit
+		if selected.size() > 0 and is_instance_valid(selected[0]):
+			var unit = selected[0]
+			var queue_size = unit.get_command_queue_size()
+			if queue_size > 0:
+				text += "📋 Queued commands: " + str(queue_size) + "\n"
 	
 	text += "\nPlayer List:\n"
 	for peer_id in NetworkManager.players:
@@ -127,5 +135,5 @@ func update_info():
 	text += "\nPress ESC to return to menu"
 	text += "\nWASD/Arrows: Pan | Q/E: Rotate | Scroll: Zoom"
 	text += "\nLeft Click: Select | Shift+Click: Add | Drag: Box select"
-	text += "\nRight Click: Move selected units"
+	text += "\nRight Click: Move | Shift+Right Click: Queue Move"
 	info_label.text = text

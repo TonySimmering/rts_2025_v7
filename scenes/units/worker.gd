@@ -10,18 +10,18 @@ extends CharacterBody3D
 @onready var model: Node3D = $Model
 
 # Movement
-@export var move_speed: float = 2.5
+@export var move_speed: float = 5.0
 @export var gravity: float = 20.0
-@export var stuck_check_interval: float = 2.0  # CHANGED: Check every 2 seconds instead of 1
-@export var stuck_distance_threshold: float = 1.0  # CHANGED: Must move at least 1 unit instead of 0.5
-@export var max_stuck_time: float = 6.0  # CHANGED: Wait 6 seconds before recalculating
+@export var stuck_check_interval: float = 2.0
+@export var stuck_distance_threshold: float = 1.0
+@export var max_stuck_time: float = 6.0
 
 var is_selected: bool = false
 var current_animation: String = "Idle"
 var animation_player: AnimationPlayer = null
 
-# ADD THIS
-var target_facing_angle: float = 0.0  # Formation facing direction
+# Formation facing
+var target_facing_angle: float = 0.0
 var has_facing_target: bool = false
 
 # Stuck detection
@@ -30,7 +30,7 @@ var stuck_timer: float = 0.0
 var check_timer: float = 0.0
 
 # State
-enum UnitState { IDLE, MOVING, CHOPPING }
+enum UnitState { IDLE, MOVING, GATHERING }
 var state: UnitState = UnitState.IDLE
 
 func _ready():
@@ -65,8 +65,25 @@ func setup_agent():
 	await get_tree().physics_frame
 	await get_tree().physics_frame
 	
+	# Configure avoidance
+	navigation_agent.avoidance_enabled = true
+	navigation_agent.radius = 0.5
+	navigation_agent.max_neighbors = 10
+	navigation_agent.time_horizon_agents = 1.0
+	navigation_agent.max_speed = move_speed
+	
+	# Connect avoidance signal
+	navigation_agent.velocity_computed.connect(_on_velocity_computed)
+	
 	print("NavigationAgent setup:")
 	print("  Map RID valid: ", navigation_agent.get_navigation_map().is_valid())
+	print("  Agent avoidance enabled: ", navigation_agent.avoidance_enabled)
+
+func _on_velocity_computed(safe_velocity: Vector3):
+	"""Called when avoidance calculation completes"""
+	velocity.x = safe_velocity.x
+	velocity.z = safe_velocity.z
+	move_and_slide()
 
 func _physics_process(delta):
 	# Apply gravity when not on floor
@@ -77,6 +94,7 @@ func _physics_process(delta):
 		UnitState.MOVING:
 			process_movement(delta)
 		UnitState.IDLE:
+			# Still apply gravity and movement even when idle
 			move_and_slide()
 			if animation_player and current_animation != "Idle":
 				play_animation("Idle")
@@ -97,23 +115,35 @@ func process_movement(delta):
 		play_animation("Idle")
 		return
 	
-	# Stuck detection
+	# Improved stuck detection
 	check_timer += delta
 	if check_timer >= stuck_check_interval:
 		check_timer = 0.0
 		
 		var distance_moved = global_position.distance_to(last_check_position)
-		if distance_moved < stuck_distance_threshold:
+		var distance_to_target = global_position.distance_to(navigation_agent.target_position)
+		
+		# Consider stuck if: not moving AND still far from target
+		if distance_moved < stuck_distance_threshold and distance_to_target > 2.0:
 			stuck_timer += stuck_check_interval
 			
 			if stuck_timer >= max_stuck_time:
-				print("Unit stuck! Recalculating path...")
-				# Recalculate path
-				var target = navigation_agent.target_position
-				navigation_agent.target_position = target
+				print("⚠ Unit stuck! Trying alternative path...")
+				
+				# Try finding path to a point near the target
+				var nav_map = get_world_3d().navigation_map
+				var nearby_target = navigation_agent.target_position + Vector3(
+					randf_range(-3, 3),
+					0,
+					randf_range(-3, 3)
+				)
+				var closest = NavigationServer3D.map_get_closest_point(nav_map, nearby_target)
+				
+				print("  Retargeting to nearby position: ", closest)
+				navigation_agent.target_position = closest
 				stuck_timer = 0.0
 		else:
-			stuck_timer = 0.0  # Reset if making progress
+			stuck_timer = 0.0
 		
 		last_check_position = global_position
 	
@@ -124,10 +154,9 @@ func process_movement(delta):
 		var target_rotation = atan2(direction.x, direction.z)
 		rotation.y = lerp_angle(rotation.y, target_rotation, delta * 10.0)
 	
-	velocity.x = direction.x * move_speed
-	velocity.z = direction.z * move_speed
-	
-	move_and_slide()
+	# Use set_velocity for avoidance instead of direct movement
+	var desired_velocity = direction * move_speed
+	navigation_agent.set_velocity(desired_velocity)
 	
 	if animation_player and current_animation != "Walk":
 		play_animation("Walk")
@@ -142,7 +171,23 @@ func move_to_position(target_position: Vector3, facing_angle: float = 0.0):
 
 @rpc("any_peer", "call_local", "reliable")
 func move_to_position_rpc(target_position: Vector3, facing_angle: float = 0.0):
-	"""Execute move command on all clients"""
+	"""Execute move command on all clients with path validation"""
+	
+	# Validate path exists before moving
+	var nav_map = get_world_3d().navigation_map
+	var path = NavigationServer3D.map_get_path(
+		nav_map,
+		global_position,
+		target_position,
+		true  # optimize
+	)
+	
+	if path.size() < 2:
+		print("✗ NO VALID PATH from ", global_position, " to ", target_position)
+		return  # Don't move if no path
+	
+	print("✓ Valid path with ", path.size(), " waypoints")
+	
 	navigation_agent.target_position = target_position
 	
 	# Store the formation facing angle
@@ -155,7 +200,6 @@ func move_to_position_rpc(target_position: Vector3, facing_angle: float = 0.0):
 	last_check_position = global_position
 	
 	state = UnitState.MOVING
-	print("Unit moving to: ", target_position, " with facing: ", rad_to_deg(facing_angle))
 
 func select():
 	is_selected = true
