@@ -100,21 +100,51 @@ func _on_right_mouse_up():
 	
 	is_rotating_formation = false
 	
+	# Calculate facing angle
+	var facing_angle = formation_rotation
+	
+	# If no rotation was applied (simple click), calculate direction from units to target
+	var drag_distance = get_viewport().get_mouse_position().distance_to(rotation_start_pos)
+	if drag_distance < ROTATION_DRAG_THRESHOLD:
+		# Calculate average position of selected units
+		var avg_position = Vector3.ZERO
+		var valid_count = 0
+		for unit in selected_units:
+			if is_instance_valid(unit):
+				avg_position += unit.global_position
+				valid_count += 1
+		
+		if valid_count > 0:
+			avg_position /= valid_count
+			# Calculate direction from units to target
+			var direction = (formation_center - avg_position).normalized()
+			facing_angle = atan2(direction.x, direction.z)
+			print("Auto-calculated facing from travel direction: ", rad_to_deg(facing_angle), " degrees")
+		else:
+			facing_angle = 0.0
+	
 	# Issue move command with formation
 	var formation_positions = FormationManager.calculate_formation_positions(
 		formation_center,
 		selected_units.size(),
 		current_formation,
-		formation_rotation
+		facing_angle
 	)
 	
-	print("Move command to: ", formation_center, " with angle: ", rad_to_deg(formation_rotation), " degrees")
+	# Validate each position against NavMesh
+	var nav_map = get_tree().root.get_world_3d().navigation_map
+	for i in range(formation_positions.size()):
+		var original_pos = formation_positions[i]
+		var valid_pos = NavigationServer3D.map_get_closest_point(nav_map, original_pos)
+		formation_positions[i] = valid_pos
 	
-	# Issue move commands
+	print("Move command to: ", formation_center, " with angle: ", rad_to_deg(facing_angle), " degrees")
+	
+	# Issue move commands with facing angle
 	for i in range(selected_units.size()):
 		var unit = selected_units[i]
 		if is_instance_valid(unit) and unit.is_multiplayer_authority():
-			unit.move_to_position(formation_positions[i])
+			unit.move_to_position(formation_positions[i], facing_angle)
 	
 	move_command_issued.emit(formation_center, selected_units)
 

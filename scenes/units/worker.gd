@@ -12,13 +12,17 @@ extends CharacterBody3D
 # Movement
 @export var move_speed: float = 2.5
 @export var gravity: float = 20.0
-@export var stuck_check_interval: float = 1.0  # Check every second
-@export var stuck_distance_threshold: float = 0.5  # Must move at least this far
-@export var max_stuck_time: float = 3.0  # Recalculate after 3 seconds stuck
+@export var stuck_check_interval: float = 2.0  # CHANGED: Check every 2 seconds instead of 1
+@export var stuck_distance_threshold: float = 1.0  # CHANGED: Must move at least 1 unit instead of 0.5
+@export var max_stuck_time: float = 6.0  # CHANGED: Wait 6 seconds before recalculating
 
 var is_selected: bool = false
 var current_animation: String = "Idle"
 var animation_player: AnimationPlayer = null
+
+# ADD THIS
+var target_facing_angle: float = 0.0  # Formation facing direction
+var has_facing_target: bool = false
 
 # Stuck detection
 var last_check_position: Vector3 = Vector3.ZERO
@@ -79,9 +83,17 @@ func _physics_process(delta):
 
 func process_movement(delta):
 	if navigation_agent.is_navigation_finished():
+		print("Navigation finished! Stopping.")
 		state = UnitState.IDLE
 		velocity.x = 0
 		velocity.z = 0
+		
+		# Apply formation facing direction
+		if has_facing_target:
+			rotation.y = target_facing_angle
+			has_facing_target = false
+			print("Applied formation facing: ", rad_to_deg(target_facing_angle), " degrees")
+		
 		play_animation("Idle")
 		return
 	
@@ -120,24 +132,22 @@ func process_movement(delta):
 	if animation_player and current_animation != "Walk":
 		play_animation("Walk")
 
-# CHANGED: Network-synced move command
-func move_to_position(target_position: Vector3):
+func move_to_position(target_position: Vector3, facing_angle: float = 0.0):
 	# Only the owner can issue move commands
 	if not is_multiplayer_authority():
 		return
 	
-	print("\n=== MOVE COMMAND ===")
-	print("Worker at: ", global_position)
-	print("Target: ", target_position)
-	
-	# Send move command to all clients
-	move_to_position_rpc.rpc(target_position)
+	# Send move command to all clients with facing angle
+	move_to_position_rpc.rpc(target_position, facing_angle)
 
 @rpc("any_peer", "call_local", "reliable")
-func move_to_position_rpc(target_position: Vector3):
+func move_to_position_rpc(target_position: Vector3, facing_angle: float = 0.0):
 	"""Execute move command on all clients"""
-	# Validate target is reachable
 	navigation_agent.target_position = target_position
+	
+	# Store the formation facing angle
+	target_facing_angle = facing_angle
+	has_facing_target = true
 	
 	# Reset stuck detection
 	stuck_timer = 0.0
@@ -145,7 +155,7 @@ func move_to_position_rpc(target_position: Vector3):
 	last_check_position = global_position
 	
 	state = UnitState.MOVING
-	print("Unit moving to: ", target_position)
+	print("Unit moving to: ", target_position, " with facing: ", rad_to_deg(facing_angle))
 
 func select():
 	is_selected = true
