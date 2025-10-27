@@ -1,6 +1,8 @@
-[gd_scene load_steps=2 format=3 uid="uid://b8jjollqmu46t"]
+[gd_scene load_steps=3 format=3 uid="uid://b8jjollqmu46t"]
 
-[ext_resource type="Script" path="res://scripts/resources/resource_node.gd" id="1_hn2sr"]
+[ext_resource type="Script" uid="uid://42m8d8jiwpqc" path="res://scripts/resources/resource_node.gd" id="1_hn2sr"]
+
+[sub_resource type="SphereShape3D" id="SphereShape3D_rlo3i"]
 
 [node name="ResourceNode" type="StaticBody3D"]
 collision_layer = 4
@@ -10,6 +12,8 @@ script = ExtResource("1_hn2sr")
 [node name="MeshInstance3D" type="MeshInstance3D" parent="."]
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+shape = SubResource("SphereShape3D_rlo3i")
+debug_color = Color(0, 11.708403, 13.469126, 1)
 
 [node name="Label3D" type="Label3D" parent="."]
 pixel_size = 0.01
