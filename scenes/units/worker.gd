@@ -41,7 +41,7 @@ var state: UnitState = UnitState.IDLE
 var target_resource: Node = null
 var gather_timer: float = 0.0
 const GATHER_INTERVAL: float = 2.0  # Gather every 2 seconds
-const GATHER_RANGE: float = 2.5
+const GATHER_RANGE: float = 4.0  # Increased for bigger resources
 
 func _ready():
 	add_to_group("units")

@@ -180,9 +180,14 @@ func bake_navigation():
 func spawn_resource_nodes():
 	"""Spawn resource nodes across the terrain (server only)"""
 	if not multiplayer.is_server():
+		print("⚠ Not server, skipping resource spawn")
 		return
 	
-	print("Spawning resource nodes...")
+	print("\n=== SPAWNING RESOURCES ===")
+	print("Is Server: ", multiplayer.is_server())
+	print("Num gold: ", num_gold_nodes)
+	print("Num wood: ", num_wood_nodes)
+	print("Num stone: ", num_stone_nodes)
 	
 	# Spawn gold
 	for i in range(num_gold_nodes):
@@ -196,12 +201,16 @@ func spawn_resource_nodes():
 	for i in range(num_stone_nodes):
 		spawn_resource(2, i)  # Type 2 = Stone
 	
-	print("Resource nodes spawned!")
+	print("✓ Resource spawning complete!")
+	print("Total resources in scene: ", get_tree().get_nodes_in_group("resource_nodes").size())
+	print("=========================\n")
 
 func spawn_resource(resource_type: int, index: int):
 	"""Spawn a single resource node"""
-	var max_attempts = 20
+	var max_attempts = 50
 	var nav_map = get_world_3d().navigation_map
+	
+	print("\n[SPAWN ATTEMPT] Type: ", resource_type, " Index: ", index)
 	
 	for attempt in range(max_attempts):
 		# Random position on terrain
@@ -212,39 +221,71 @@ func spawn_resource(resource_type: int, index: int):
 		# Get valid NavMesh position
 		var valid_pos = NavigationServer3D.map_get_closest_point(nav_map, test_pos)
 		
-		# Check if position is actually walkable (not too far from test position)
-		if valid_pos.distance_to(test_pos) > 5.0:
+		var distance_to_navmesh = valid_pos.distance_to(test_pos)
+		
+		# Much more lenient check - accept if within 15 units
+		if distance_to_navmesh > 15.0:
+			if attempt % 10 == 0:
+				print("  Attempt ", attempt, ": Too far from NavMesh (", distance_to_navmesh, "m)")
 			continue
 		
-		# Check minimum distance from other resources
+		# Check minimum distance from other resources (reduced to 5.0)
 		var too_close = false
 		for existing in get_tree().get_nodes_in_group("resource_nodes"):
-			if existing.global_position.distance_to(valid_pos) < 8.0:
+			if existing.global_position.distance_to(valid_pos) < 5.0:
 				too_close = true
 				break
 		
 		if too_close:
+			if attempt % 10 == 0:
+				print("  Attempt ", attempt, ": Too close to existing resource")
 			continue
 		
-		# Spawn the resource via RPC so all clients get it
+		# Success! Spawn the resource
+		print("  ✓ SUCCESS on attempt ", attempt + 1)
+		print("    Test pos: ", test_pos)
+		print("    Valid pos: ", valid_pos)
+		print("    Distance to NavMesh: ", distance_to_navmesh, "m")
 		spawn_resource_rpc.rpc(resource_type, valid_pos, index)
 		return
 	
-	print("⚠ Failed to find valid position for resource after ", max_attempts, " attempts")
+	print("  ✗ FAILED after ", max_attempts, " attempts")
+	print("    NavMesh might be too sparse or disconnected")
+	
+	# Fallback: spawn without NavMesh validation
+	print("  → Using fallback spawn (no NavMesh check)")
+	var fallback_pos = Vector3(
+		randf_range(20, terrain_width - 20),
+		0,
+		randf_range(20, terrain_depth - 20)
+	)
+	spawn_resource_rpc.rpc(resource_type, fallback_pos, index)
 
 @rpc("authority", "call_local", "reliable")
 func spawn_resource_rpc(resource_type: int, position: Vector3, index: int):
 	"""Spawn resource on all clients"""
+	var type_names = ["Gold", "Wood", "Stone"]
+	print("\n[SPAWN_RESOURCE_RPC] Called on peer ", multiplayer.get_unique_id())
+	print("  Type: ", type_names[resource_type])
+	print("  Position: ", position)
+	print("  Index: ", index)
+	
 	var resource_node = RESOURCE_NODE_SCENE.instantiate()
+	print("  ✓ Resource node instantiated: ", resource_node)
+	
 	resource_node.resource_type = resource_type
+	print("  ✓ Resource type set")
+	
 	resource_node.global_position = position
 	resource_node.name = "Resource_%d_%d" % [resource_type, index]
+	print("  ✓ Position and name set: ", resource_node.name)
 	
 	# Add to navigation region parent so it's in the same coordinate space
 	navigation_region.add_child(resource_node)
-	
-	var type_names = ["Gold", "Wood", "Stone"]
-	print("  Spawned ", type_names[resource_type], " at ", position)
+	print("  ✓ Added to scene tree")
+	print("  Final position: ", resource_node.global_position)
+	print("  Is in group 'resource_nodes': ", resource_node.is_in_group("resource_nodes"))
+	print("")
 
 func get_height_at_position(world_pos: Vector3) -> float:
 	var local_x = int(world_pos.x / terrain_scale)

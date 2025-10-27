@@ -40,29 +40,48 @@ func _ready():
 	set_multiplayer_authority(1)
 
 func setup_visuals():
-	# Create mesh
-	var box_mesh = BoxMesh.new()
-	box_mesh.size = Vector3(2, 1.5, 2)
-	mesh_instance.mesh = box_mesh
+	# Different visuals based on type
+	if resource_type == ResourceType.WOOD:
+		# Trees are taller and thinner
+		var cylinder_mesh = CylinderMesh.new()
+		cylinder_mesh.top_radius = 0.3
+		cylinder_mesh.bottom_radius = 0.4
+		cylinder_mesh.height = 4.0
+		mesh_instance.mesh = cylinder_mesh
+		mesh_instance.position.y = 2.0
+		
+		# Collision for tree
+		var shape = CylinderShape3D.new()
+		shape.radius = 0.4
+		shape.height = 4.0
+		collision_shape.shape = shape
+		collision_shape.position.y = 2.0
+	else:
+		# Stone and Gold are smaller rocks/deposits
+		var box_mesh = BoxMesh.new()
+		box_mesh.size = Vector3(1.5, 1.0, 1.5)
+		mesh_instance.mesh = box_mesh
+		mesh_instance.position.y = 0.5
+		
+		# Collision for rocks
+		var shape = BoxShape3D.new()
+		shape.size = Vector3(1.5, 1.0, 1.5)
+		collision_shape.shape = shape
+		collision_shape.position.y = 0.5
 	
 	# Apply color based on type
 	var material = StandardMaterial3D.new()
 	material.albedo_color = TYPE_COLORS[resource_type]
 	mesh_instance.set_surface_override_material(0, material)
-	
-	# Create collision shape
-	var shape = BoxShape3D.new()
-	shape.size = Vector3(2, 1.5, 2)
-	collision_shape.shape = shape
-	
-	# Position shapes
-	mesh_instance.position.y = 0.75
-	collision_shape.position.y = 0.75
 
 func update_label():
 	if label_3d:
 		label_3d.text = TYPE_NAMES[resource_type] + "\n" + str(current_amount)
-		label_3d.position.y = 2.0
+		# Position label above the resource
+		if resource_type == ResourceType.WOOD:
+			label_3d.position.y = 4.5  # Above tree
+		else:
+			label_3d.position.y = 1.5  # Above rock/deposit
 
 func can_gather() -> bool:
 	return current_amount > 0
