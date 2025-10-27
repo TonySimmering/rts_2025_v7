@@ -16,17 +16,39 @@ extends Node3D
 @export var noise_lacunarity: float = 2.0
 @export var noise_gain: float = 0.4
 
+@export_group("Texture Settings")
+@export var use_procedural_textures: bool = true
+@export var use_texture_files: bool = false  # Toggle for custom textures
+@export var grass_texture_path: String = ""
+@export var dirt_texture_path: String = ""
+@export var rock_texture_path: String = ""
+@export var snow_texture_path: String = ""
+@export var grass_normal_path: String = ""
+@export var dirt_normal_path: String = ""
+@export var rock_normal_path: String = ""
+@export var snow_normal_path: String = ""
+@export var grass_color: Color = Color(0.3, 0.6, 0.2)
+@export var dirt_color: Color = Color(0.45, 0.35, 0.25)
+@export var rock_color: Color = Color(0.5, 0.5, 0.5)
+@export var snow_color: Color = Color(0.9, 0.9, 0.95)
+@export_range(0.0, 5.0) var height_blend_sharpness: float = 2.0
+@export_range(0.0, 1.0) var slope_influence: float = 0.5
+@export var texture_scale: float = 10.0  # UV tiling
+@export var use_triplanar_mapping: bool = true  # Better for steep slopes
+@export_range(0.0, 1.0) var terrain_roughness: float = 0.8
+@export_range(0.0, 2.0) var normal_map_strength: float = 1.0
+
 @export_group("Resource Spawning")
 @export var spawn_resources: bool = true
 @export var num_gold_nodes: int = 8
 @export var num_stone_nodes: int = 12
 
 @export_group("Forest Generation")
-@export var num_forests: int = 5  # Number of forest clusters
-@export var trees_per_forest_min: int = 15  # Min trees per forest
-@export var trees_per_forest_max: int = 35  # Max trees per forest
-@export var forest_radius: float = 15.0  # Size of each forest cluster
-@export var tree_spacing_min: float = 3.0  # Min distance between trees
+@export var num_forests: int = 5
+@export var trees_per_forest_min: int = 15
+@export var trees_per_forest_max: int = 35
+@export var forest_radius: float = 15.0
+@export var tree_spacing_min: float = 3.0
 
 @export_group("Generation")
 @export var auto_generate: bool = false
@@ -41,6 +63,7 @@ const RESOURCE_NODE_SCENE = preload("res://scripts/resources/resource_node.tscn"
 var noise: FastNoiseLite
 var heightmap: Array = []
 var terrain_seed: int = 0
+var vertex_colors: PackedColorArray = []
 
 func _ready():
 	auto_generate = false
@@ -55,7 +78,6 @@ func generate_terrain(seed_value: int):
 	create_collision()
 	await bake_navigation()
 	
-	# Spawn resources after navigation is ready
 	if spawn_resources and multiplayer.is_server():
 		spawn_resource_nodes()
 	
@@ -86,6 +108,9 @@ func create_mesh():
 	var surface_tool = SurfaceTool.new()
 	surface_tool.begin(Mesh.PRIMITIVE_TRIANGLES)
 	
+	vertex_colors.clear()
+	
+	# Build vertices
 	for z in terrain_depth:
 		for x in terrain_width:
 			var height = heightmap[z][x]
@@ -95,14 +120,20 @@ func create_mesh():
 				z * terrain_scale
 			)
 			
+			# Calculate UV coordinates
 			var uv = Vector2(
-				float(x) / float(terrain_width - 1),
-				float(z) / float(terrain_depth - 1)
+				float(x) / float(terrain_width - 1) * texture_scale,
+				float(z) / float(terrain_depth - 1) * texture_scale
 			)
 			
+			# Calculate vertex color based on height and slope
+			var color = calculate_terrain_color(x, z, height)
+			
 			surface_tool.set_uv(uv)
+			surface_tool.set_color(color)
 			surface_tool.add_vertex(vertex_pos)
 	
+	# Build triangles
 	for z in terrain_depth - 1:
 		for x in terrain_width - 1:
 			var i = z * terrain_width + x
@@ -120,9 +151,184 @@ func create_mesh():
 	var mesh = surface_tool.commit()
 	terrain_mesh_instance.mesh = mesh
 	
+	# Apply material with vertex colors
+	apply_terrain_material()
+
+func calculate_terrain_color(x: int, z: int, height: float) -> Color:
+	"""Calculate blend weights for textures, stored in RGBA channels"""
+	
+	# Normalize height to 0-1 range
+	var height_factor = inverse_lerp(min_height, max_height, height)
+	
+	# Calculate slope (steepness)
+	var slope = calculate_slope(x, z)
+	var slope_factor = clamp(slope / 45.0, 0.0, 1.0)  # 0-45 degrees normalized
+	
+	# Initialize blend weights (R=grass, G=dirt, B=rock, A=snow)
+	var grass_weight = 0.0
+	var dirt_weight = 0.0
+	var rock_weight = 0.0
+	var snow_weight = 0.0
+	
+	# Calculate base weights by height
+	if height_factor < 0.3:
+		# Low areas - grass
+		grass_weight = 1.0
+	elif height_factor < 0.5:
+		# Mid-low areas - blend grass to dirt
+		var blend = inverse_lerp(0.3, 0.5, height_factor)
+		blend = pow(blend, height_blend_sharpness)
+		grass_weight = 1.0 - blend
+		dirt_weight = blend
+	elif height_factor < 0.7:
+		# Mid-high areas - blend dirt to rock
+		var blend = inverse_lerp(0.5, 0.7, height_factor)
+		blend = pow(blend, height_blend_sharpness)
+		dirt_weight = 1.0 - blend
+		rock_weight = blend
+	else:
+		# High areas - blend rock to snow
+		var blend = inverse_lerp(0.7, 1.0, height_factor)
+		blend = pow(blend, height_blend_sharpness)
+		rock_weight = 1.0 - blend
+		snow_weight = blend
+	
+	# Apply slope influence (steep slopes = more rocky)
+	if slope_factor > 0.3:
+		var slope_blend = inverse_lerp(0.3, 0.8, slope_factor) * slope_influence
+		
+		# Redistribute weights to favor rock
+		var total_other = grass_weight + dirt_weight + snow_weight
+		if total_other > 0.0:
+			var scale = (1.0 - slope_blend) / total_other
+			grass_weight *= scale
+			dirt_weight *= scale
+			snow_weight *= scale
+		rock_weight = lerp(rock_weight, 1.0, slope_blend)
+	
+	# Normalize weights to sum to 1.0
+	var total = grass_weight + dirt_weight + rock_weight + snow_weight
+	if total > 0.0:
+		grass_weight /= total
+		dirt_weight /= total
+		rock_weight /= total
+		snow_weight /= total
+	
+	# If using procedural colors, blend them for preview
+	if not use_texture_files:
+		var final_color = grass_color * grass_weight + dirt_color * dirt_weight + rock_color * rock_weight + snow_color * snow_weight
+		return final_color
+	else:
+		# Return blend weights in RGBA for shader
+		return Color(grass_weight, dirt_weight, rock_weight, snow_weight)
+	
+
+func calculate_slope(x: int, z: int) -> float:
+	"""Calculate slope angle in degrees at given position"""
+	if x <= 0 or x >= terrain_width - 1 or z <= 0 or z >= terrain_depth - 1:
+		return 0.0
+	
+	var height_center = heightmap[z][x]
+	var height_right = heightmap[z][x + 1]
+	var height_up = heightmap[z + 1][x]
+	
+	# Calculate gradients
+	var dx = (height_right - height_center) / terrain_scale
+	var dz = (height_up - height_center) / terrain_scale
+	
+	# Calculate slope angle
+	var slope_radians = atan(sqrt(dx * dx + dz * dz))
+	return rad_to_deg(slope_radians)
+
+func apply_terrain_material():
+	if use_texture_files:
+		# Use shader-based material with custom textures
+		var shader_material = ShaderMaterial.new()
+		
+		# Load shader
+		var shader = load("res://scenes/terrain/terrain_shader.gdshader")
+		if not shader:
+			push_error("Failed to load terrain_shader.gdshader! Using fallback material.")
+			apply_fallback_material()
+			return
+		
+		shader_material.shader = shader
+		
+		# Load and set textures
+		var grass_tex = load_texture(grass_texture_path)
+		var dirt_tex = load_texture(dirt_texture_path)
+		var rock_tex = load_texture(rock_texture_path)
+		var snow_tex = load_texture(snow_texture_path)
+		
+		if grass_tex:
+			shader_material.set_shader_parameter("grass_texture", grass_tex)
+		if dirt_tex:
+			shader_material.set_shader_parameter("dirt_texture", dirt_tex)
+		if rock_tex:
+			shader_material.set_shader_parameter("rock_texture", rock_tex)
+		if snow_tex:
+			shader_material.set_shader_parameter("snow_texture", snow_tex)
+		
+		# Load and set normal maps (optional)
+		if grass_normal_path != "":
+			var grass_norm = load_texture(grass_normal_path)
+			if grass_norm:
+				shader_material.set_shader_parameter("grass_normal", grass_norm)
+		
+		if dirt_normal_path != "":
+			var dirt_norm = load_texture(dirt_normal_path)
+			if dirt_norm:
+				shader_material.set_shader_parameter("dirt_normal", dirt_norm)
+		
+		if rock_normal_path != "":
+			var rock_norm = load_texture(rock_normal_path)
+			if rock_norm:
+				shader_material.set_shader_parameter("rock_normal", rock_norm)
+		
+		if snow_normal_path != "":
+			var snow_norm = load_texture(snow_normal_path)
+			if snow_norm:
+				shader_material.set_shader_parameter("snow_normal", snow_norm)
+		
+		# Set shader parameters
+		shader_material.set_shader_parameter("texture_scale", texture_scale)
+		shader_material.set_shader_parameter("roughness", terrain_roughness)
+		shader_material.set_shader_parameter("normal_strength", normal_map_strength)
+		shader_material.set_shader_parameter("use_triplanar", use_triplanar_mapping)
+		shader_material.set_shader_parameter("use_vertex_blend", true)
+		
+		terrain_mesh_instance.set_surface_override_material(0, shader_material)
+		print("  Applied shader-based material with custom textures")
+	else:
+		# Use simple vertex color material
+		apply_fallback_material()
+
+func apply_fallback_material():
+	"""Apply simple StandardMaterial3D with vertex colors"""
 	var material = StandardMaterial3D.new()
-	material.albedo_color = Color(0.3, 0.6, 0.2)
+	material.vertex_color_use_as_albedo = true
+	material.roughness = terrain_roughness
+	material.metallic = 0.0
+	material.ao_enabled = true
+	material.ao_light_affect = 0.5
 	terrain_mesh_instance.set_surface_override_material(0, material)
+	print("  Applied vertex color material")
+
+func load_texture(path: String) -> Texture2D:
+	"""Load a texture from file path"""
+	if path == "" or path == null:
+		return null
+	
+	if ResourceLoader.exists(path):
+		var texture = load(path)
+		if texture is Texture2D:
+			return texture
+		else:
+			push_warning("File at ", path, " is not a valid texture")
+			return null
+	else:
+		push_warning("Texture file not found: ", path)
+		return null
 
 func create_collision():
 	var shape = ConcavePolygonShape3D.new()
@@ -192,19 +398,17 @@ func spawn_resource_nodes():
 	print("\n=== SPAWNING RESOURCES ===")
 	print("Is Server: ", multiplayer.is_server())
 	
-	# Spawn forests (clusters of trees)
 	spawn_forests()
 	
-	# Spawn individual resource nodes
 	print("\nSpawning gold nodes: ", num_gold_nodes)
 	for i in range(num_gold_nodes):
-		spawn_resource(0, i)  # Type 0 = Gold
+		spawn_resource(0, i)
 	
 	print("Spawning stone nodes: ", num_stone_nodes)
 	for i in range(num_stone_nodes):
-		spawn_resource(2, i)  # Type 2 = Stone
+		spawn_resource(2, i)
 	
-	await get_tree().create_timer(0.5).timeout  # Give time for spawning
+	await get_tree().create_timer(0.5).timeout
 	
 	print("✓ Resource spawning complete!")
 	print("Total resources in scene: ", get_tree().get_nodes_in_group("resource_nodes").size())
@@ -215,10 +419,7 @@ func spawn_forests():
 	print("\n--- FOREST GENERATION ---")
 	print("Generating ", num_forests, " forest clusters...")
 	
-	var nav_map = get_world_3d().navigation_map
 	var forest_centers: Array[Vector3] = []
-	
-	# Generate forest center points (well-spaced)
 	var min_forest_spacing = forest_radius * 2.5
 	
 	for forest_idx in range(num_forests):
@@ -228,14 +429,11 @@ func spawn_forests():
 		var placed = false
 		
 		while attempts < max_attempts:
-			# Random position with margins
-			forest_center = Vector3(
-				randf_range(forest_radius + 10, terrain_width - forest_radius - 10),
-				0,
-				randf_range(forest_radius + 10, terrain_depth - forest_radius - 10)
-			)
+			var center_x = randf_range(forest_radius + 10, terrain_width - forest_radius - 10)
+			var center_z = randf_range(forest_radius + 10, terrain_depth - forest_radius - 10)
 			
-			# Check distance from other forest centers
+			forest_center = Vector3(center_x, 0, center_z)
+			
 			var too_close = false
 			for existing_center in forest_centers:
 				if forest_center.distance_to(existing_center) < min_forest_spacing:
@@ -255,7 +453,6 @@ func spawn_forests():
 	
 	print("\nTotal forest centers placed: ", forest_centers.size())
 	
-	# Spawn trees in each forest
 	var total_trees_spawned = 0
 	
 	for forest_idx in range(forest_centers.size()):
@@ -272,49 +469,33 @@ func spawn_forests():
 			var max_tree_attempts = 50
 			
 			while not placed and attempts < max_tree_attempts:
-				# Use exponential distribution for more density near center
 				var distance = randf() * randf() * forest_radius
 				var angle = randf() * TAU
 				
-				var tree_pos = center + Vector3(
-					cos(angle) * distance,
-					0,
-					sin(angle) * distance
-				)
+				var tree_x = center.x + cos(angle) * distance
+				var tree_z = center.z + sin(angle) * distance
 				
-				# Bounds check
-				if tree_pos.x < 5 or tree_pos.x > terrain_width - 5 or tree_pos.z < 5 or tree_pos.z > terrain_depth - 5:
+				if tree_x < 5 or tree_x > terrain_width - 5 or tree_z < 5 or tree_z > terrain_depth - 5:
 					attempts += 1
 					continue
 				
-				# Validate with NavMesh (more lenient)
-				var valid_pos = NavigationServer3D.map_get_closest_point(nav_map, tree_pos)
+				var tree_y = get_height_at_position(Vector3(tree_x, 0, tree_z))
+				var tree_pos = Vector3(tree_x, tree_y, tree_z)
 				
-				# Much more lenient - just needs to be somewhere reasonable
-				if valid_pos.distance_to(tree_pos) > 20.0:
-					attempts += 1
-					continue
-				
-				# Check spacing from other trees in this forest only
 				var too_close = false
 				for existing_tree in trees_in_forest:
-					if valid_pos.distance_to(existing_tree) < tree_spacing_min:
+					if tree_pos.distance_to(existing_tree) < tree_spacing_min:
 						too_close = true
 						break
 				
 				if not too_close:
-					trees_in_forest.append(valid_pos)
-					# Spawn immediately with unique index
+					trees_in_forest.append(tree_pos)
 					var global_tree_index = total_trees_spawned
-					spawn_tree_at_position(valid_pos, global_tree_index)
+					spawn_tree_at_position(tree_pos, global_tree_index)
 					total_trees_spawned += 1
 					placed = true
 				
 				attempts += 1
-			
-			if not placed and attempts >= max_tree_attempts:
-				if tree_idx % 5 == 0:  # Only print every 5th failure to reduce spam
-					print("    ⚠ Could not place tree ", tree_idx, " in forest ", forest_idx + 1)
 		
 		print("    ✓ Placed ", trees_in_forest.size(), " / ", num_trees, " trees in forest ", forest_idx + 1)
 	
@@ -322,55 +503,40 @@ func spawn_forests():
 	print("--- FOREST GENERATION COMPLETE ---")
 
 func spawn_tree_at_position(position: Vector3, index: int):
-	"""Directly spawn a tree (wood resource) at position"""
-	spawn_resource_rpc.rpc(1, position, index)  # Type 1 = Wood
+	spawn_resource_rpc.rpc(1, position, index)
 
 func spawn_resource(resource_type: int, index: int):
 	"""Spawn a single resource node (gold/stone)"""
 	var max_attempts = 50
-	var nav_map = get_world_3d().navigation_map
 	
 	for attempt in range(max_attempts):
-		# Random position on terrain
 		var random_x = randf_range(10, terrain_width - 10)
 		var random_z = randf_range(10, terrain_depth - 10)
-		var test_pos = Vector3(random_x, 0, random_z)
 		
-		# Get valid NavMesh position
-		var valid_pos = NavigationServer3D.map_get_closest_point(nav_map, test_pos)
+		var terrain_height = get_height_at_position(Vector3(random_x, 0, random_z))
+		var test_pos = Vector3(random_x, terrain_height, random_z)
 		
-		var distance_to_navmesh = valid_pos.distance_to(test_pos)
-		
-		if distance_to_navmesh > 15.0:
-			continue
-		
-		# Check minimum distance from other resources
 		var too_close = false
 		for existing in get_tree().get_nodes_in_group("resource_nodes"):
-			if existing.global_position.distance_to(valid_pos) < 5.0:
+			if existing.global_position.distance_to(test_pos) < 8.0:
 				too_close = true
 				break
 		
 		if too_close:
 			continue
 		
-		# Success! Spawn the resource
-		spawn_resource_rpc.rpc(resource_type, valid_pos, index)
+		spawn_resource_rpc.rpc(resource_type, test_pos, index)
 		return
 	
-	# Fallback: spawn without NavMesh validation
-	var fallback_pos = Vector3(
-		randf_range(20, terrain_width - 20),
-		0,
-		randf_range(20, terrain_depth - 20)
-	)
+	var fallback_x = randf_range(20, terrain_width - 20)
+	var fallback_z = randf_range(20, terrain_depth - 20)
+	var fallback_height = get_height_at_position(Vector3(fallback_x, 0, fallback_z))
+	var fallback_pos = Vector3(fallback_x, fallback_height, fallback_z)
 	spawn_resource_rpc.rpc(resource_type, fallback_pos, index)
 
 @rpc("authority", "call_local", "reliable")
 func spawn_resource_rpc(resource_type: int, position: Vector3, index: int):
 	"""Spawn resource on all clients"""
-	var type_names = ["Gold", "Wood", "Stone"]
-	
 	var resource_node = RESOURCE_NODE_SCENE.instantiate()
 	
 	resource_node.resource_type = resource_type
@@ -379,7 +545,6 @@ func spawn_resource_rpc(resource_type: int, position: Vector3, index: int):
 	
 	navigation_region.add_child(resource_node)
 	
-	# Debug output (only print every 10th tree to reduce spam)
 	if resource_type == 1 and index % 10 == 0:
 		print("    Tree batch spawned: ", index, " at ", position)
 
