@@ -204,6 +204,8 @@ func spawn_resource_nodes():
 	for i in range(num_stone_nodes):
 		spawn_resource(2, i)  # Type 2 = Stone
 	
+	await get_tree().create_timer(0.5).timeout  # Give time for spawning
+	
 	print("✓ Resource spawning complete!")
 	print("Total resources in scene: ", get_tree().get_nodes_in_group("resource_nodes").size())
 	print("=========================\n")
@@ -221,8 +223,9 @@ func spawn_forests():
 	
 	for forest_idx in range(num_forests):
 		var attempts = 0
-		var max_attempts = 50
+		var max_attempts = 100
 		var forest_center: Vector3
+		var placed = false
 		
 		while attempts < max_attempts:
 			# Random position with margins
@@ -241,13 +244,16 @@ func spawn_forests():
 			
 			if not too_close:
 				forest_centers.append(forest_center)
-				print("  Forest ", forest_idx + 1, " center: ", forest_center)
+				print("  ✓ Forest ", forest_idx + 1, " center placed at: ", forest_center)
+				placed = true
 				break
 			
 			attempts += 1
 		
-		if attempts >= max_attempts:
-			print("  ⚠ Could not place forest ", forest_idx + 1)
+		if not placed:
+			print("  ⚠ Could not place forest ", forest_idx + 1, " after ", max_attempts, " attempts")
+	
+	print("\nTotal forest centers placed: ", forest_centers.size())
 	
 	# Spawn trees in each forest
 	var total_trees_spawned = 0
@@ -256,15 +262,16 @@ func spawn_forests():
 		var center = forest_centers[forest_idx]
 		var num_trees = randi_range(trees_per_forest_min, trees_per_forest_max)
 		
-		print("\n  Spawning forest ", forest_idx + 1, " with ", num_trees, " trees...")
+		print("\n  Spawning forest ", forest_idx + 1, " with target of ", num_trees, " trees...")
 		
 		var trees_in_forest: Array[Vector3] = []
 		
 		for tree_idx in range(num_trees):
 			var placed = false
 			var attempts = 0
+			var max_tree_attempts = 50
 			
-			while not placed and attempts < 30:
+			while not placed and attempts < max_tree_attempts:
 				# Use exponential distribution for more density near center
 				var distance = randf() * randf() * forest_radius
 				var angle = randf() * TAU
@@ -275,15 +282,20 @@ func spawn_forests():
 					sin(angle) * distance
 				)
 				
-				# Validate with NavMesh
-				var valid_pos = NavigationServer3D.map_get_closest_point(nav_map, tree_pos)
-				
-				# Check if too far from intended position
-				if valid_pos.distance_to(tree_pos) > 10.0:
+				# Bounds check
+				if tree_pos.x < 5 or tree_pos.x > terrain_width - 5 or tree_pos.z < 5 or tree_pos.z > terrain_depth - 5:
 					attempts += 1
 					continue
 				
-				# Check spacing from other trees in this forest
+				# Validate with NavMesh (more lenient)
+				var valid_pos = NavigationServer3D.map_get_closest_point(nav_map, tree_pos)
+				
+				# Much more lenient - just needs to be somewhere reasonable
+				if valid_pos.distance_to(tree_pos) > 20.0:
+					attempts += 1
+					continue
+				
+				# Check spacing from other trees in this forest only
 				var too_close = false
 				for existing_tree in trees_in_forest:
 					if valid_pos.distance_to(existing_tree) < tree_spacing_min:
@@ -292,16 +304,26 @@ func spawn_forests():
 				
 				if not too_close:
 					trees_in_forest.append(valid_pos)
-					spawn_resource_rpc.rpc(1, valid_pos, total_trees_spawned)  # Type 1 = Wood
+					# Spawn immediately with unique index
+					var global_tree_index = total_trees_spawned
+					spawn_tree_at_position(valid_pos, global_tree_index)
 					total_trees_spawned += 1
 					placed = true
 				
 				attempts += 1
+			
+			if not placed and attempts >= max_tree_attempts:
+				if tree_idx % 5 == 0:  # Only print every 5th failure to reduce spam
+					print("    ⚠ Could not place tree ", tree_idx, " in forest ", forest_idx + 1)
 		
-		print("    ✓ Placed ", trees_in_forest.size(), " trees in forest ", forest_idx + 1)
+		print("    ✓ Placed ", trees_in_forest.size(), " / ", num_trees, " trees in forest ", forest_idx + 1)
 	
 	print("\n  Total trees spawned: ", total_trees_spawned)
 	print("--- FOREST GENERATION COMPLETE ---")
+
+func spawn_tree_at_position(position: Vector3, index: int):
+	"""Directly spawn a tree (wood resource) at position"""
+	spawn_resource_rpc.rpc(1, position, index)  # Type 1 = Wood
 
 func spawn_resource(resource_type: int, index: int):
 	"""Spawn a single resource node (gold/stone)"""
@@ -347,6 +369,8 @@ func spawn_resource(resource_type: int, index: int):
 @rpc("authority", "call_local", "reliable")
 func spawn_resource_rpc(resource_type: int, position: Vector3, index: int):
 	"""Spawn resource on all clients"""
+	var type_names = ["Gold", "Wood", "Stone"]
+	
 	var resource_node = RESOURCE_NODE_SCENE.instantiate()
 	
 	resource_node.resource_type = resource_type
@@ -354,6 +378,10 @@ func spawn_resource_rpc(resource_type: int, position: Vector3, index: int):
 	resource_node.name = "Resource_%d_%d" % [resource_type, index]
 	
 	navigation_region.add_child(resource_node)
+	
+	# Debug output (only print every 10th tree to reduce spam)
+	if resource_type == 1 and index % 10 == 0:
+		print("    Tree batch spawned: ", index, " at ", position)
 
 func get_height_at_position(world_pos: Vector3) -> float:
 	var local_x = int(world_pos.x / terrain_scale)
