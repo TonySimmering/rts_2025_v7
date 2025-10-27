@@ -1,3 +1,18 @@
-[gd_scene format=3 uid="uid://b8jjollqmu46t"]
+[gd_scene load_steps=2 format=3 uid="uid://b8jjollqmu46t"]
 
-[node name="ResourceNode" type="Node3D"]
+[ext_resource type="Script" path="res://scripts/resources/resource_node.gd" id="1_hn2sr"]
+
+[node name="ResourceNode" type="StaticBody3D"]
+collision_layer = 4
+collision_mask = 0
+script = ExtResource("1_hn2sr")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="."]
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+
+[node name="Label3D" type="Label3D" parent="."]
+pixel_size = 0.01
+billboard = 1
+no_depth_test = true
+fixed_size = true

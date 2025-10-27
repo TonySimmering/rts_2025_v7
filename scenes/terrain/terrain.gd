@@ -30,7 +30,7 @@ extends Node3D
 @onready var terrain_collision: StaticBody3D = $NavigationRegion3D/TerrainCollision
 @onready var collision_shape: CollisionShape3D = $NavigationRegion3D/TerrainCollision/CollisionShape3D
 
-const RESOURCE_NODE_SCENE = preload("res://scenes/resources/resource_node.tscn")
+const RESOURCE_NODE_SCENE = preload("res://scripts/resources/resource_node.tscn")
 
 var noise: FastNoiseLite
 var heightmap: Array = []
