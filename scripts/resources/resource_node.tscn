@@ -8,6 +8,7 @@
 collision_layer = 4
 collision_mask = 0
 script = ExtResource("1_hn2sr")
+resource_type = 1
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="."]
 

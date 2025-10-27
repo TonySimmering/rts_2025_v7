@@ -19,8 +19,14 @@ extends Node3D
 @export_group("Resource Spawning")
 @export var spawn_resources: bool = true
 @export var num_gold_nodes: int = 8
-@export var num_wood_nodes: int = 12
 @export var num_stone_nodes: int = 12
+
+@export_group("Forest Generation")
+@export var num_forests: int = 5  # Number of forest clusters
+@export var trees_per_forest_min: int = 15  # Min trees per forest
+@export var trees_per_forest_max: int = 35  # Max trees per forest
+@export var forest_radius: float = 15.0  # Size of each forest cluster
+@export var tree_spacing_min: float = 3.0  # Min distance between trees
 
 @export_group("Generation")
 @export var auto_generate: bool = false
@@ -185,19 +191,16 @@ func spawn_resource_nodes():
 	
 	print("\n=== SPAWNING RESOURCES ===")
 	print("Is Server: ", multiplayer.is_server())
-	print("Num gold: ", num_gold_nodes)
-	print("Num wood: ", num_wood_nodes)
-	print("Num stone: ", num_stone_nodes)
 	
-	# Spawn gold
+	# Spawn forests (clusters of trees)
+	spawn_forests()
+	
+	# Spawn individual resource nodes
+	print("\nSpawning gold nodes: ", num_gold_nodes)
 	for i in range(num_gold_nodes):
 		spawn_resource(0, i)  # Type 0 = Gold
 	
-	# Spawn wood
-	for i in range(num_wood_nodes):
-		spawn_resource(1, i)  # Type 1 = Wood
-	
-	# Spawn stone
+	print("Spawning stone nodes: ", num_stone_nodes)
 	for i in range(num_stone_nodes):
 		spawn_resource(2, i)  # Type 2 = Stone
 	
@@ -205,12 +208,105 @@ func spawn_resource_nodes():
 	print("Total resources in scene: ", get_tree().get_nodes_in_group("resource_nodes").size())
 	print("=========================\n")
 
+func spawn_forests():
+	"""Generate realistic forest clusters"""
+	print("\n--- FOREST GENERATION ---")
+	print("Generating ", num_forests, " forest clusters...")
+	
+	var nav_map = get_world_3d().navigation_map
+	var forest_centers: Array[Vector3] = []
+	
+	# Generate forest center points (well-spaced)
+	var min_forest_spacing = forest_radius * 2.5
+	
+	for forest_idx in range(num_forests):
+		var attempts = 0
+		var max_attempts = 50
+		var forest_center: Vector3
+		
+		while attempts < max_attempts:
+			# Random position with margins
+			forest_center = Vector3(
+				randf_range(forest_radius + 10, terrain_width - forest_radius - 10),
+				0,
+				randf_range(forest_radius + 10, terrain_depth - forest_radius - 10)
+			)
+			
+			# Check distance from other forest centers
+			var too_close = false
+			for existing_center in forest_centers:
+				if forest_center.distance_to(existing_center) < min_forest_spacing:
+					too_close = true
+					break
+			
+			if not too_close:
+				forest_centers.append(forest_center)
+				print("  Forest ", forest_idx + 1, " center: ", forest_center)
+				break
+			
+			attempts += 1
+		
+		if attempts >= max_attempts:
+			print("  ⚠ Could not place forest ", forest_idx + 1)
+	
+	# Spawn trees in each forest
+	var total_trees_spawned = 0
+	
+	for forest_idx in range(forest_centers.size()):
+		var center = forest_centers[forest_idx]
+		var num_trees = randi_range(trees_per_forest_min, trees_per_forest_max)
+		
+		print("\n  Spawning forest ", forest_idx + 1, " with ", num_trees, " trees...")
+		
+		var trees_in_forest: Array[Vector3] = []
+		
+		for tree_idx in range(num_trees):
+			var placed = false
+			var attempts = 0
+			
+			while not placed and attempts < 30:
+				# Use exponential distribution for more density near center
+				var distance = randf() * randf() * forest_radius
+				var angle = randf() * TAU
+				
+				var tree_pos = center + Vector3(
+					cos(angle) * distance,
+					0,
+					sin(angle) * distance
+				)
+				
+				# Validate with NavMesh
+				var valid_pos = NavigationServer3D.map_get_closest_point(nav_map, tree_pos)
+				
+				# Check if too far from intended position
+				if valid_pos.distance_to(tree_pos) > 10.0:
+					attempts += 1
+					continue
+				
+				# Check spacing from other trees in this forest
+				var too_close = false
+				for existing_tree in trees_in_forest:
+					if valid_pos.distance_to(existing_tree) < tree_spacing_min:
+						too_close = true
+						break
+				
+				if not too_close:
+					trees_in_forest.append(valid_pos)
+					spawn_resource_rpc.rpc(1, valid_pos, total_trees_spawned)  # Type 1 = Wood
+					total_trees_spawned += 1
+					placed = true
+				
+				attempts += 1
+		
+		print("    ✓ Placed ", trees_in_forest.size(), " trees in forest ", forest_idx + 1)
+	
+	print("\n  Total trees spawned: ", total_trees_spawned)
+	print("--- FOREST GENERATION COMPLETE ---")
+
 func spawn_resource(resource_type: int, index: int):
-	"""Spawn a single resource node"""
+	"""Spawn a single resource node (gold/stone)"""
 	var max_attempts = 50
 	var nav_map = get_world_3d().navigation_map
-	
-	print("\n[SPAWN ATTEMPT] Type: ", resource_type, " Index: ", index)
 	
 	for attempt in range(max_attempts):
 		# Random position on terrain
@@ -223,13 +319,10 @@ func spawn_resource(resource_type: int, index: int):
 		
 		var distance_to_navmesh = valid_pos.distance_to(test_pos)
 		
-		# Much more lenient check - accept if within 15 units
 		if distance_to_navmesh > 15.0:
-			if attempt % 10 == 0:
-				print("  Attempt ", attempt, ": Too far from NavMesh (", distance_to_navmesh, "m)")
 			continue
 		
-		# Check minimum distance from other resources (reduced to 5.0)
+		# Check minimum distance from other resources
 		var too_close = false
 		for existing in get_tree().get_nodes_in_group("resource_nodes"):
 			if existing.global_position.distance_to(valid_pos) < 5.0:
@@ -237,23 +330,13 @@ func spawn_resource(resource_type: int, index: int):
 				break
 		
 		if too_close:
-			if attempt % 10 == 0:
-				print("  Attempt ", attempt, ": Too close to existing resource")
 			continue
 		
 		# Success! Spawn the resource
-		print("  ✓ SUCCESS on attempt ", attempt + 1)
-		print("    Test pos: ", test_pos)
-		print("    Valid pos: ", valid_pos)
-		print("    Distance to NavMesh: ", distance_to_navmesh, "m")
 		spawn_resource_rpc.rpc(resource_type, valid_pos, index)
 		return
 	
-	print("  ✗ FAILED after ", max_attempts, " attempts")
-	print("    NavMesh might be too sparse or disconnected")
-	
 	# Fallback: spawn without NavMesh validation
-	print("  → Using fallback spawn (no NavMesh check)")
 	var fallback_pos = Vector3(
 		randf_range(20, terrain_width - 20),
 		0,
@@ -264,28 +347,13 @@ func spawn_resource(resource_type: int, index: int):
 @rpc("authority", "call_local", "reliable")
 func spawn_resource_rpc(resource_type: int, position: Vector3, index: int):
 	"""Spawn resource on all clients"""
-	var type_names = ["Gold", "Wood", "Stone"]
-	print("\n[SPAWN_RESOURCE_RPC] Called on peer ", multiplayer.get_unique_id())
-	print("  Type: ", type_names[resource_type])
-	print("  Position: ", position)
-	print("  Index: ", index)
-	
 	var resource_node = RESOURCE_NODE_SCENE.instantiate()
-	print("  ✓ Resource node instantiated: ", resource_node)
 	
 	resource_node.resource_type = resource_type
-	print("  ✓ Resource type set")
-	
 	resource_node.global_position = position
 	resource_node.name = "Resource_%d_%d" % [resource_type, index]
-	print("  ✓ Position and name set: ", resource_node.name)
 	
-	# Add to navigation region parent so it's in the same coordinate space
 	navigation_region.add_child(resource_node)
-	print("  ✓ Added to scene tree")
-	print("  Final position: ", resource_node.global_position)
-	print("  Is in group 'resource_nodes': ", resource_node.is_in_group("resource_nodes"))
-	print("")
 
 func get_height_at_position(world_pos: Vector3) -> float:
 	var local_x = int(world_pos.x / terrain_scale)

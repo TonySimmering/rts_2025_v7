@@ -34,7 +34,10 @@ func _ready():
 	add_to_group("resource_nodes")
 	current_amount = starting_amount
 	setup_visuals()
-	update_label()
+	
+	# Hide label - no text on resources
+	if label_3d:
+		label_3d.visible = false
 	
 	# Only server manages depletion
 	set_multiplayer_authority(1)
@@ -73,15 +76,6 @@ func setup_visuals():
 	var material = StandardMaterial3D.new()
 	material.albedo_color = TYPE_COLORS[resource_type]
 	mesh_instance.set_surface_override_material(0, material)
-
-func update_label():
-	if label_3d:
-		label_3d.text = TYPE_NAMES[resource_type] + "\n" + str(current_amount)
-		# Position label above the resource
-		if resource_type == ResourceType.WOOD:
-			label_3d.position.y = 4.5  # Above tree
-		else:
-			label_3d.position.y = 1.5  # Above rock/deposit
 
 func can_gather() -> bool:
 	return current_amount > 0
@@ -127,9 +121,8 @@ func gather(worker: Node) -> Dictionary:
 
 @rpc("authority", "call_local", "reliable")
 func update_amount(new_amount: int):
-	"""Sync resource amount to all clients"""
+	"""Sync resource amount to all clients (no longer updates label)"""
 	current_amount = new_amount
-	update_label()
 
 @rpc("authority", "call_local", "reliable")
 func deplete():
