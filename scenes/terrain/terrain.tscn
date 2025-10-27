@@ -10,6 +10,8 @@ agent_max_climb = 2.0
 
 [node name="Terrain" type="Node3D"]
 script = ExtResource("1_hn2sr")
+max_height = 6.0
+min_height = -3.0
 use_procedural_textures = false
 use_texture_files = true
 grass_texture_path = "res://assets/textures/terrain/grass.png"

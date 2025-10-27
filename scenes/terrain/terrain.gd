@@ -166,47 +166,40 @@ func calculate_terrain_color(x: int, z: int, height: float) -> Color:
 	
 	# Initialize blend weights (R=grass, G=dirt, B=rock, A=snow)
 	var grass_weight = 0.0
-	var dirt_weight = 0.0
+	var dirt_weight = 0.0  # Reserved for player-flattened terrain
 	var rock_weight = 0.0
 	var snow_weight = 0.0
 	
-	# Calculate base weights by height
-	if height_factor < 0.3:
-		# Low areas - grass
+	# Calculate base weights by height (grass -> rock -> snow, NO dirt)
+	if height_factor < 0.65:
+		# Low to mid areas - pure grass
 		grass_weight = 1.0
-	elif height_factor < 0.5:
-		# Mid-low areas - blend grass to dirt
-		var blend = inverse_lerp(0.3, 0.5, height_factor)
+	elif height_factor < 0.85:
+		# Mid-high areas - blend grass directly to rock
+		var blend = inverse_lerp(0.65, 0.85, height_factor)
 		blend = pow(blend, height_blend_sharpness)
 		grass_weight = 1.0 - blend
-		dirt_weight = blend
-	elif height_factor < 0.7:
-		# Mid-high areas - blend dirt to rock
-		var blend = inverse_lerp(0.5, 0.7, height_factor)
-		blend = pow(blend, height_blend_sharpness)
-		dirt_weight = 1.0 - blend
 		rock_weight = blend
 	else:
 		# High areas - blend rock to snow
-		var blend = inverse_lerp(0.7, 1.0, height_factor)
+		var blend = inverse_lerp(0.85, 1.0, height_factor)
 		blend = pow(blend, height_blend_sharpness)
 		rock_weight = 1.0 - blend
 		snow_weight = blend
 	
 	# Apply slope influence (steep slopes = more rocky)
-	if slope_factor > 0.3:
-		var slope_blend = inverse_lerp(0.3, 0.8, slope_factor) * slope_influence
+	if slope_factor > 0.4:
+		var slope_blend = inverse_lerp(0.4, 0.8, slope_factor) * slope_influence
 		
-		# Redistribute weights to favor rock
-		var total_other = grass_weight + dirt_weight + snow_weight
+		# Redistribute weights to favor rock (dirt stays at 0)
+		var total_other = grass_weight + snow_weight
 		if total_other > 0.0:
 			var scale = (1.0 - slope_blend) / total_other
 			grass_weight *= scale
-			dirt_weight *= scale
 			snow_weight *= scale
 		rock_weight = lerp(rock_weight, 1.0, slope_blend)
 	
-	# Normalize weights to sum to 1.0
+	# Normalize weights to sum to 1.0 (dirt will remain 0 for natural terrain)
 	var total = grass_weight + dirt_weight + rock_weight + snow_weight
 	if total > 0.0:
 		grass_weight /= total
@@ -221,7 +214,6 @@ func calculate_terrain_color(x: int, z: int, height: float) -> Color:
 	else:
 		# Return blend weights in RGBA for shader
 		return Color(grass_weight, dirt_weight, rock_weight, snow_weight)
-	
 
 func calculate_slope(x: int, z: int) -> float:
 	"""Calculate slope angle in degrees at given position"""
