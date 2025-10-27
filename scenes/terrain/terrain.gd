@@ -171,21 +171,24 @@ func calculate_terrain_color(x: int, z: int, height: float) -> Color:
 	var snow_weight = 0.0
 	
 	# Calculate base weights by height (grass -> rock -> snow, NO dirt)
-	if height_factor < 0.65:
-		# Low to mid areas - pure grass
+	if height_factor < 0.35:
+		# Low areas - pure grass
 		grass_weight = 1.0
-	elif height_factor < 0.85:
-		# Mid-high areas - blend grass directly to rock
-		var blend = inverse_lerp(0.65, 0.85, height_factor)
+	elif height_factor < 0.65:
+		# Mid areas - blend grass directly to rock
+		var blend = inverse_lerp(0.35, 0.65, height_factor)
 		blend = pow(blend, height_blend_sharpness)
 		grass_weight = 1.0 - blend
 		rock_weight = blend
-	else:
-		# High areas - blend rock to snow
-		var blend = inverse_lerp(0.85, 1.0, height_factor)
+	elif height_factor < 0.85:
+		# Mid-high areas - blend rock to snow
+		var blend = inverse_lerp(0.65, 0.85, height_factor)
 		blend = pow(blend, height_blend_sharpness)
 		rock_weight = 1.0 - blend
 		snow_weight = blend
+	else:
+		# High areas - pure snow
+		snow_weight = 1.0
 	
 	# Apply slope influence (steep slopes = more rocky)
 	if slope_factor > 0.4:

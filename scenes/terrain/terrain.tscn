@@ -23,6 +23,7 @@ dirt_normal_path = "res://assets/textures/terrain/dirt_normal.png"
 rock_normal_path = "res://assets/textures/terrain/rock_normal.png"
 snow_normal_path = "res://assets/textures/terrain/snow_normal.png"
 texture_scale = 5.0
+terrain_roughness = 0.25
 
 [node name="NavigationRegion3D" type="NavigationRegion3D" parent="."]
 navigation_mesh = SubResource("NavigationMesh_hn2sr")
