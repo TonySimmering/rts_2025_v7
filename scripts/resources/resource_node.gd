@@ -35,11 +35,12 @@ func _ready():
 	current_amount = starting_amount
 	setup_visuals()
 	
-	# Hide label - no text on resources
+	collision_layer = 4
+	collision_mask = 2  # Enable collision with units
+	
 	if label_3d:
 		label_3d.visible = false
 	
-	# Only server manages depletion
 	set_multiplayer_authority(1)
 
 func setup_visuals():

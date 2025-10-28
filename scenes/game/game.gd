@@ -35,6 +35,11 @@ func _ready():
 func spawn_local_camera():
 	local_camera = CAMERA_RIG_SCENE.instantiate()
 	add_child(local_camera)
+	
+	var terrain = get_node_or_null("Terrain")
+	if terrain:
+		local_camera.set_terrain(terrain)
+	
 	print("Local camera spawned for player ", multiplayer.get_unique_id())
 
 func setup_selection_system():

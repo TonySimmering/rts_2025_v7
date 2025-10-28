@@ -5,7 +5,7 @@ extends Node3D
 @onready var camera: Camera3D = $CameraPivot/Camera3D
 
 # Movement settings
-@export var pan_speed: float = 20.0
+@export var pan_speed: float = 15
 @export var edge_scroll_margin: float = 20.0  # pixels from edge
 @export var edge_scroll_speed: float = 15.0
 
@@ -14,8 +14,8 @@ extends Node3D
 
 # Zoom settings
 @export var zoom_speed: float = 1.5
-@export var min_zoom_distance: float = 7.0
-@export var max_zoom_distance: float = 20.0
+@export var min_zoom_distance: float = 1
+@export var max_zoom_distance: float = 17
 @export var min_pitch: float = -20.0  # looking more horizontal
 @export var max_pitch: float = -70.0  # looking more vertical
 
@@ -27,6 +27,11 @@ extends Node3D
 @export var movement_smoothing: float = 10.0
 @export var rotation_smoothing: float = 5.0
 @export var zoom_smoothing: float = 8.0
+
+@export var terrain_offset: float = 1
+@export var height_smoothing: float = 5.0
+
+var terrain: Node3D = null
 
 # Internal state
 var current_zoom: float = 0.5  # 0 = max zoom out, 1 = max zoom in
@@ -101,14 +106,15 @@ func smooth_zoom(delta):
 	apply_zoom()
 
 func update_camera_transform(delta):
-	# Apply movement
 	position += velocity * delta
-	
-	# Clamp to map boundaries
 	position.x = clamp(position.x, map_min.x, map_max.x)
 	position.z = clamp(position.z, map_min.z, map_max.z)
 	
-	# Smooth rotation
+	if terrain:
+		var terrain_height = get_terrain_height_at_position(position)
+		var target_y = terrain_height + terrain_offset
+		position.y = lerp(position.y, target_y, height_smoothing * delta)
+	
 	rotation.y = lerp_angle(rotation.y, target_rotation_y, rotation_smoothing * delta)
 
 func apply_zoom():
@@ -127,3 +133,12 @@ func focus_on_position(target_pos: Vector3):
 	"""Move camera to look at a specific position"""
 	position = target_pos
 	velocity = Vector3.ZERO
+	
+func set_terrain(terrain_node: Node3D):
+	terrain = terrain_node
+	print("Camera rig terrain reference set")
+
+func get_terrain_height_at_position(world_pos: Vector3) -> float:
+	if not terrain or not terrain.has_method("get_height_at_position"):
+		return 0.0
+	return terrain.get_height_at_position(world_pos)
