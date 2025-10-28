@@ -14,7 +14,7 @@ uniform sampler2D snow_normal : hint_normal;
 
 // Material properties
 uniform float texture_scale = 10.0;
-uniform float roughness : hint_range(0.0, 1.0) = 0.8;
+uniform float roughness : hint_range(0.0, 1.0) = 1.0;
 uniform float normal_strength : hint_range(0.0, 2.0) = 1.0;
 
 // Blend settings (passed from vertex colors)
@@ -113,6 +113,8 @@ void fragment() {
 	
 	// Apply to fragment
 	ALBEDO = final_color.rgb;
-	ROUGHNESS = roughness;
+	ROUGHNESS = 1.0 - roughness;
+	METALLIC = 0.0;               // Force non-metallic
+	SPECULAR = 0.0;  
 	NORMAL_MAP = final_normal * normal_strength;
 }

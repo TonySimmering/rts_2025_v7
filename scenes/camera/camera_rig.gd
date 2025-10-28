@@ -5,7 +5,7 @@ extends Node3D
 @onready var camera: Camera3D = $CameraPivot/Camera3D
 
 # Movement settings
-@export var pan_speed: float = 15
+@export var pan_speed: float = 20
 @export var edge_scroll_margin: float = 20.0  # pixels from edge
 @export var edge_scroll_speed: float = 15.0
 

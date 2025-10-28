@@ -35,7 +35,7 @@ extends Node3D
 @export_range(0.0, 1.0) var slope_influence: float = 0.5
 @export var texture_scale: float = 10.0  # UV tiling
 @export var use_triplanar_mapping: bool = true  # Better for steep slopes
-@export_range(0.0, 1.0) var terrain_roughness: float = 0.8
+@export_range(0.0, 1.0) var terrain_roughness: float = 1.0
 @export_range(0.0, 2.0) var normal_map_strength: float = 1.0
 
 @export_group("Resource Spawning")
@@ -164,45 +164,34 @@ func calculate_terrain_color(x: int, z: int, height: float) -> Color:
 	var slope = calculate_slope(x, z)
 	var slope_factor = clamp(slope / 45.0, 0.0, 1.0)  # 0-45 degrees normalized
 	
-	# Initialize blend weights (R=grass, G=dirt, B=rock, A=snow)
+	# Initialize blend weights (R=grass, G=dirt, B=rock, A=unused)
 	var grass_weight = 0.0
 	var dirt_weight = 0.0  # Reserved for player-flattened terrain
 	var rock_weight = 0.0
-	var snow_weight = 0.0
+	var snow_weight = 0.0  # Disabled, keeping for channel compatibility
 	
-	# Calculate base weights by height (grass -> rock -> snow, NO dirt)
+	# Calculate base weights by height (grass -> rock only, NO snow)
 	if height_factor < 0.35:
 		# Low areas - pure grass
 		grass_weight = 1.0
-	elif height_factor < 0.65:
-		# Mid areas - blend grass directly to rock
-		var blend = inverse_lerp(0.35, 0.65, height_factor)
+	else:
+		# Mid to high areas - blend grass to rock
+		var blend = inverse_lerp(0.35, 0.75, height_factor)
 		blend = pow(blend, height_blend_sharpness)
 		grass_weight = 1.0 - blend
 		rock_weight = blend
-	elif height_factor < 0.85:
-		# Mid-high areas - blend rock to snow
-		var blend = inverse_lerp(0.65, 0.85, height_factor)
-		blend = pow(blend, height_blend_sharpness)
-		rock_weight = 1.0 - blend
-		snow_weight = blend
-	else:
-		# High areas - pure snow
-		snow_weight = 1.0
 	
 	# Apply slope influence (steep slopes = more rocky)
 	if slope_factor > 0.4:
 		var slope_blend = inverse_lerp(0.4, 0.8, slope_factor) * slope_influence
 		
-		# Redistribute weights to favor rock (dirt stays at 0)
-		var total_other = grass_weight + snow_weight
-		if total_other > 0.0:
-			var scale = (1.0 - slope_blend) / total_other
+		# Redistribute weights to favor rock (dirt and snow stay at 0)
+		if grass_weight > 0.0:
+			var scale = (1.0 - slope_blend)
 			grass_weight *= scale
-			snow_weight *= scale
 		rock_weight = lerp(rock_weight, 1.0, slope_blend)
 	
-	# Normalize weights to sum to 1.0 (dirt will remain 0 for natural terrain)
+	# Normalize weights to sum to 1.0
 	var total = grass_weight + dirt_weight + rock_weight + snow_weight
 	if total > 0.0:
 		grass_weight /= total
