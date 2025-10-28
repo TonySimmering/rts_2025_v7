@@ -34,19 +34,26 @@ var stuck_timer: float = 0.0
 var check_timer: float = 0.0
 
 # State
-enum UnitState { IDLE, MOVING, GATHERING }
+enum UnitState { IDLE, MOVING, GATHERING, RETURNING, DEPOSITING }
 var state: UnitState = UnitState.IDLE
 
 # Gathering
 var target_resource: Node = null
 var gather_timer: float = 0.0
-const GATHER_INTERVAL: float = 2.0  # Gather every 2 seconds
-const GATHER_RANGE: float = 4.0  # Increased for bigger resources
+const GATHER_INTERVAL: float = 2.0
+const GATHER_RANGE: float = 4.0
+
+# Resource Carrying
+var carrying_resources: Dictionary = {}  # {resource_type: amount}
+var max_carry_capacity: int = 20  # Max resources per trip
+var current_dropoff: Node = null  # Town Center reference
+const DROPOFF_SEARCH_INTERVAL: float = 5.0
+var dropoff_search_timer: float = 0.0
 
 func _ready():
 	add_to_group("units")
+	add_to_group("player_%d_units" % player_id)
 	
-	# Set multiplayer authority based on player_id
 	set_multiplayer_authority(player_id)
 	
 	print("\n=== WORKER UNIT READY ===")
@@ -75,14 +82,12 @@ func setup_agent():
 	await get_tree().physics_frame
 	await get_tree().physics_frame
 	
-	# Configure avoidance
 	navigation_agent.avoidance_enabled = true
 	navigation_agent.radius = 0.5
 	navigation_agent.max_neighbors = 10
 	navigation_agent.time_horizon_agents = 1.0
 	navigation_agent.max_speed = move_speed
 	
-	# Connect avoidance signal
 	navigation_agent.velocity_computed.connect(_on_velocity_computed)
 	
 	print("NavigationAgent setup:")
@@ -90,15 +95,21 @@ func setup_agent():
 	print("  Agent avoidance enabled: ", navigation_agent.avoidance_enabled)
 
 func _on_velocity_computed(safe_velocity: Vector3):
-	"""Called when avoidance calculation completes"""
 	velocity.x = safe_velocity.x
 	velocity.z = safe_velocity.z
 	move_and_slide()
 
 func _physics_process(delta):
-	# Apply gravity when not on floor
 	if not is_on_floor():
 		velocity.y -= gravity * delta
+	
+	# Process dropoff search
+	if multiplayer.is_server():
+		dropoff_search_timer += delta
+		if dropoff_search_timer >= DROPOFF_SEARCH_INTERVAL:
+			dropoff_search_timer = 0.0
+			if not current_dropoff or not is_instance_valid(current_dropoff):
+				find_nearest_dropoff()
 	
 	# Process current command or get next from queue
 	if current_command == null and command_queue.size() > 0:
@@ -110,11 +121,66 @@ func _physics_process(delta):
 			process_movement(delta)
 		UnitState.GATHERING:
 			process_gathering(delta)
+		UnitState.RETURNING:
+			process_returning(delta)
+		UnitState.DEPOSITING:
+			process_depositing(delta)
 		UnitState.IDLE:
-			# Still apply gravity and movement even when idle
 			move_and_slide()
 			if animation_player and current_animation != "Idle":
 				play_animation("Idle")
+
+# ============ RESOURCE CARRYING SYSTEM ============
+
+func get_carried_amount() -> int:
+	"""Get total amount of resources being carried"""
+	var total = 0
+	for amount in carrying_resources.values():
+		total += amount
+	return total
+
+func is_carrying_resources() -> bool:
+	return get_carried_amount() > 0
+
+func has_carry_space() -> bool:
+	return get_carried_amount() < max_carry_capacity
+
+func add_carried_resource(resource_type: String, amount: int):
+	"""Add resources to carry inventory"""
+	if not carrying_resources.has(resource_type):
+		carrying_resources[resource_type] = 0
+	
+	carrying_resources[resource_type] += amount
+	print("Worker carrying: ", carrying_resources)
+
+func clear_carried_resources():
+	"""Clear all carried resources"""
+	carrying_resources.clear()
+
+func find_nearest_dropoff():
+	"""Find nearest building that accepts dropoffs (Town Center)"""
+	var dropoff_buildings = get_tree().get_nodes_in_group("player_%d_buildings" % player_id)
+	
+	var nearest: Node = null
+	var nearest_dist = INF
+	
+	for building in dropoff_buildings:
+		if not is_instance_valid(building):
+			continue
+		
+		if building.has_method("can_dropoff_resources") and building.can_dropoff_resources():
+			var dist = global_position.distance_to(building.global_position)
+			if dist < nearest_dist:
+				nearest_dist = dist
+				nearest = building
+	
+	if nearest:
+		current_dropoff = nearest
+		print("Found dropoff: ", current_dropoff.building_name, " at ", nearest_dist, " units away")
+	else:
+		print("⚠ No dropoff building found for player ", player_id)
+
+# ============ STATE PROCESSING ============
 
 func process_movement(delta):
 	if navigation_agent.is_navigation_finished():
@@ -129,15 +195,13 @@ func process_movement(delta):
 					state = UnitState.GATHERING
 					velocity = Vector3.ZERO
 					target_resource.start_gathering(self)
-					play_animation("Idle")  # TODO: Add gather animation
+					play_animation("Idle")
 					return
 		
-		# Otherwise, command complete
 		state = UnitState.IDLE
 		velocity.x = 0
 		velocity.z = 0
 		
-		# Apply formation facing direction
 		if has_facing_target:
 			rotation.y = target_facing_angle
 			has_facing_target = false
@@ -146,7 +210,7 @@ func process_movement(delta):
 		current_command = null
 		return
 	
-	# Improved stuck detection
+	# Stuck detection
 	check_timer += delta
 	if check_timer >= stuck_check_interval:
 		check_timer = 0.0
@@ -197,6 +261,12 @@ func process_gathering(delta):
 		current_command = null
 		return
 	
+	# Check if inventory full
+	if not has_carry_space():
+		print("Inventory full! Returning to dropoff")
+		start_returning_to_dropoff()
+		return
+	
 	# Check if still in range
 	var distance = global_position.distance_to(target_resource.global_position)
 	if distance > GATHER_RANGE:
@@ -216,23 +286,107 @@ func process_gathering(delta):
 	if gather_timer >= GATHER_INTERVAL:
 		gather_timer = 0.0
 		
-		# Only authority can gather (server)
 		if multiplayer.is_server():
 			var result = target_resource.gather(self)
 			if result.success:
-				# Award resources to player
-				ResourceManager.add_resource(player_id, result.resource_type, result.amount)
+				# Add to carrying inventory (don't award yet)
+				add_carried_resource(result.resource_type, result.amount)
+				
+				# If full or resource depleted, return to dropoff
+				if not has_carry_space() or not target_resource.can_gather():
+					start_returning_to_dropoff()
 			else:
-				# Resource depleted or can't gather
-				print("Cannot gather, stopping")
+				print("Cannot gather, resource depleted")
 				target_resource.stop_gathering(self)
+				start_returning_to_dropoff()
+
+func start_returning_to_dropoff():
+	"""Begin returning to Town Center with resources"""
+	if not is_carrying_resources():
+		state = UnitState.IDLE
+		current_command = null
+		target_resource = null
+		return
+	
+	if not current_dropoff or not is_instance_valid(current_dropoff):
+		find_nearest_dropoff()
+	
+	if not current_dropoff:
+		print("⚠ No dropoff building! Resources lost")
+		clear_carried_resources()
+		state = UnitState.IDLE
+		current_command = null
+		return
+	
+	print("Returning to ", current_dropoff.building_name, " with ", get_carried_amount(), " resources")
+	state = UnitState.RETURNING
+	navigation_agent.target_position = current_dropoff.get_dropoff_position()
+	play_animation("Walk")
+
+func process_returning(delta):
+	"""Handle returning to dropoff"""
+	if not current_dropoff or not is_instance_valid(current_dropoff):
+		print("⚠ Dropoff lost! Finding new one")
+		find_nearest_dropoff()
+		if not current_dropoff:
+			state = UnitState.IDLE
+			current_command = null
+			return
+	
+	# Check if in dropoff range
+	if current_dropoff.is_in_dropoff_range(global_position):
+		state = UnitState.DEPOSITING
+		velocity = Vector3.ZERO
+		play_animation("Idle")
+		return
+	
+	# Continue moving
+	if navigation_agent.is_navigation_finished():
+		print("⚠ Reached dropoff position but not in range")
+		state = UnitState.DEPOSITING
+		return
+	
+	var next_position = navigation_agent.get_next_path_position()
+	var direction = (next_position - global_position).normalized()
+	
+	if direction.length() > 0.01:
+		var target_rotation = atan2(direction.x, direction.z)
+		rotation.y = lerp_angle(rotation.y, target_rotation, delta * 10.0)
+	
+	var desired_velocity = direction * move_speed
+	navigation_agent.set_velocity(desired_velocity)
+
+func process_depositing(delta):
+	"""Handle resource dropoff"""
+	if not current_dropoff or not is_instance_valid(current_dropoff):
+		state = UnitState.IDLE
+		return
+	
+	# Face dropoff
+	var direction = (current_dropoff.global_position - global_position).normalized()
+	if direction.length() > 0.01:
+		var target_rotation = atan2(direction.x, direction.z)
+		rotation.y = lerp_angle(rotation.y, target_rotation, delta * 5.0)
+	
+	# Deposit (server only)
+	if multiplayer.is_server():
+		if current_dropoff.accept_resources(self, carrying_resources):
+			clear_carried_resources()
+			
+			# Return to gather if resource still valid
+			if target_resource and is_instance_valid(target_resource) and target_resource.can_gather():
+				print("Dropoff complete, returning to resource")
+				state = UnitState.MOVING
+				navigation_agent.target_position = target_resource.global_position
+			else:
+				print("Dropoff complete, going idle")
 				state = UnitState.IDLE
 				current_command = null
 				target_resource = null
 
-# Command Queue System
+# ============ COMMAND SYSTEM ============
+
 func queue_command(command: UnitCommand, append: bool = false):
-	"""Queue a command for this unit"""
 	if not is_multiplayer_authority():
 		return
 	
@@ -240,14 +394,12 @@ func queue_command(command: UnitCommand, append: bool = false):
 
 @rpc("any_peer", "call_local", "reliable")
 func queue_command_rpc(command_data: Dictionary, append: bool):
-	"""Receive and queue command on all clients"""
 	var command = UnitCommand.from_dict(command_data)
 	
 	if append:
 		command_queue.append(command)
 		print("📋 Queued command: ", command, " (queue size: ", command_queue.size(), ")")
 	else:
-		# Stop current gathering if switching commands
 		if state == UnitState.GATHERING and target_resource:
 			target_resource.stop_gathering(self)
 			target_resource = null
@@ -258,7 +410,6 @@ func queue_command_rpc(command_data: Dictionary, append: bool):
 		print("📋 New command: ", command)
 
 func _execute_command(command: UnitCommand):
-	"""Execute a command from the queue"""
 	match command.type:
 		UnitCommand.CommandType.MOVE:
 			_execute_move_command(command)
@@ -275,11 +426,9 @@ func _execute_command(command: UnitCommand):
 			current_command = null
 
 func _execute_move_command(command: UnitCommand):
-	"""Execute a move command"""
 	var target_position = command.target_position
 	var facing_angle = command.facing_angle
 	
-	# Validate path exists
 	var nav_map = get_world_3d().navigation_map
 	var path = NavigationServer3D.map_get_path(
 		nav_map,
@@ -307,7 +456,6 @@ func _execute_move_command(command: UnitCommand):
 	state = UnitState.MOVING
 
 func _execute_gather_command(command: UnitCommand):
-	"""Execute a gather command"""
 	target_resource = command.target_entity
 	
 	if not target_resource or not is_instance_valid(target_resource):
@@ -322,25 +470,28 @@ func _execute_gather_command(command: UnitCommand):
 	
 	print("✓ Moving to gather from ", target_resource.get_resource_type_string())
 	
-	# Move to resource
+	# Ensure we have a dropoff building
+	if not current_dropoff or not is_instance_valid(current_dropoff):
+		find_nearest_dropoff()
+	
 	navigation_agent.target_position = target_resource.global_position
 	state = UnitState.MOVING
 
 func resource_depleted():
-	"""Called when the resource we're gathering from depletes"""
 	if state == UnitState.GATHERING:
 		print("Resource depleted while gathering")
-		state = UnitState.IDLE
-		current_command = null
-		target_resource = null
+		if is_carrying_resources():
+			start_returning_to_dropoff()
+		else:
+			state = UnitState.IDLE
+			current_command = null
+			target_resource = null
 
 func get_command_queue_size() -> int:
-	"""Get the number of queued commands"""
 	return command_queue.size() + (1 if current_command != null else 0)
 
 # Legacy support
 func move_to_position(target_position: Vector3, facing_angle: float = 0.0):
-	"""Legacy move function"""
 	if not is_multiplayer_authority():
 		return
 	
@@ -351,7 +502,6 @@ func move_to_position(target_position: Vector3, facing_angle: float = 0.0):
 
 @rpc("any_peer", "call_local", "reliable")
 func move_to_position_rpc(target_position: Vector3, facing_angle: float = 0.0):
-	"""Legacy RPC"""
 	var command = UnitCommand.new(UnitCommand.CommandType.MOVE)
 	command.target_position = target_position
 	command.facing_angle = facing_angle

@@ -2,13 +2,48 @@ extends Node
 
 # Spawn settings
 const WORKERS_PER_PLAYER = 3
-const SPAWN_RADIUS = 5.0
+const SPAWN_RADIUS = 8.0  # Spawn workers around Town Center
 
 # Preload scenes
 const WORKER_SCENE = preload("res://scenes/units/worker.tscn")
+const TOWN_CENTER_SCENE = preload("res://scenes/buildings/town_center.tscn")
 
 var terrain: Node3D = null
 var spawned_units: Dictionary = {}  # player_id -> Array[units]
+var spawned_buildings: Dictionary = {}  # player_id -> Array[buildings]
+
+func spawn_town_centers():
+	"""Spawn Town Center for each player (server only)"""
+	if not multiplayer.is_server():
+		return
+	
+	print("\n=== SPAWNING TOWN CENTERS ===")
+	
+	var map_size = Vector2(128, 128)
+	
+	for player_id in NetworkManager.players:
+		var spawn_center = get_spawn_location_for_player(player_id, map_size)
+		spawn_town_center_networked.rpc(player_id, spawn_center)
+		print("  Spawned Town Center for player ", player_id, " at ", spawn_center)
+	
+	print("=== TOWN CENTERS SPAWNED ===\n")
+
+@rpc("authority", "call_local", "reliable")
+func spawn_town_center_networked(player_id: int, spawn_pos: Vector3):
+	"""Spawn a Town Center on all clients"""
+	var town_center = TOWN_CENTER_SCENE.instantiate()
+	town_center.global_position = spawn_pos
+	town_center.player_id = player_id
+	town_center.building_id = player_id  # Building ID = player ID for Town Center
+	town_center.name = "TownCenter_P%d" % player_id
+	
+	get_tree().root.get_node("Game").add_child(town_center)
+	
+	if not spawned_buildings.has(player_id):
+		spawned_buildings[player_id] = []
+	spawned_buildings[player_id].append(town_center)
+	
+	print("  Town Center spawned for player ", player_id, " at ", spawn_pos)
 
 func spawn_starting_units(player_id: int, spawn_center: Vector3):
 	"""Spawn initial units for a player at the given location"""
@@ -33,7 +68,6 @@ func spawn_starting_units(player_id: int, spawn_center: Vector3):
 			var closest_point = NavigationServer3D.map_get_closest_point(nav_map, spawn_pos)
 			spawn_pos.y = closest_point.y + 0.1
 		
-		# CHANGED: Use RPC to spawn on all clients
 		spawn_unit_networked.rpc(player_id, i, spawn_pos)
 
 @rpc("authority", "call_local", "reliable")
@@ -43,7 +77,7 @@ func spawn_unit_networked(player_id: int, unit_id: int, spawn_pos: Vector3):
 	worker.global_position = spawn_pos
 	worker.player_id = player_id
 	worker.unit_id = unit_id
-	worker.name = "Unit_P%d_U%d" % [player_id, unit_id]  # Unique name
+	worker.name = "Unit_P%d_U%d" % [player_id, unit_id]
 	
 	get_tree().root.get_node("Game").add_child(worker)
 	

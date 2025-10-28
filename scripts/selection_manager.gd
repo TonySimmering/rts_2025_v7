@@ -244,7 +244,11 @@ func _get_box_rect() -> Rect2:
 func _find_unit_from_collider(collider: Node) -> Node:
 	var current = collider
 	while current:
-		if current.has_method("select") and current.has_method("deselect"):
+		# Check for units
+		if current.has_method("select") and current.has_method("deselect") and current.is_in_group("units"):
+			return current
+		# Check for buildings
+		if current.has_method("select") and current.has_method("deselect") and current.is_in_group("buildings"):
 			return current
 		current = current.get_parent()
 	return null

@@ -20,7 +20,7 @@ func _ready():
 	setup_selection_system()
 	await generate_terrain_with_seed()
 	setup_spawn_system()
-	spawn_starting_units()
+	spawn_town_centers_and_units()
 	
 	NetworkManager.player_connected.connect(_on_player_joined)
 	NetworkManager.player_disconnected.connect(_on_player_left)
@@ -66,28 +66,36 @@ func setup_spawn_system():
 	spawn_manager = Node.new()
 	spawn_manager.set_script(load("res://scripts/spawn_manager.gd"))
 	spawn_manager.terrain = get_node_or_null("Terrain")
+	spawn_manager.name = "SpawnManager"
 	add_child(spawn_manager)
 	print("Spawn system initialized")
 
-func spawn_starting_units():
+func spawn_town_centers_and_units():
+	"""Spawn Town Centers and starting units (server only)"""
 	if not multiplayer.is_server():
 		return
 	
 	await get_tree().create_timer(0.5).timeout
-
+	
+	# First spawn Town Centers
+	spawn_manager.spawn_town_centers()
+	
+	# Wait for Town Centers to be ready
+	await get_tree().create_timer(0.3).timeout
+	
+	# Then spawn workers around Town Centers
 	var terrain = get_node_or_null("Terrain")
 	var map_size = Vector2(128, 128)
 	
 	for player_id in NetworkManager.players:
 		var spawn_center = spawn_manager.get_spawn_location_for_player(player_id, map_size)
 		spawn_manager.spawn_starting_units(player_id, spawn_center)
-		
+
 func _on_selection_changed(selected_units: Array):
-	print("Selection changed: ", selected_units.size(), " units selected")
+	print("Selection changed: ", selected_units.size(), " units/buildings selected")
 	update_info()
 
 func _on_resources_changed(player_id: int, resources: Dictionary):
-	# Only update UI if it's our resources
 	if player_id == multiplayer.get_unique_id():
 		update_info()
 
@@ -136,9 +144,26 @@ func update_info():
 		
 		if selected.size() > 0 and is_instance_valid(selected[0]):
 			var unit = selected[0]
-			var queue_size = unit.get_command_queue_size()
-			if queue_size > 0:
-				text += "📋 Queued commands: " + str(queue_size) + "\n"
+			
+			# Show carrying info for workers
+			if unit.has_method("get_carried_amount"):
+				var carried = unit.get_carried_amount()
+				if carried > 0:
+					text += "💼 Carrying: " + str(carried) + " resources\n"
+			
+			# Show command queue
+			if unit.has_method("get_command_queue_size"):
+				var queue_size = unit.get_command_queue_size()
+				if queue_size > 0:
+					text += "📋 Queued commands: " + str(queue_size) + "\n"
+			
+			# Show production info for buildings
+			if unit.has_method("get_queue_size"):
+				var prod_queue = unit.get_queue_size()
+				if prod_queue > 0:
+					text += "🏭 Production queue: " + str(prod_queue) + "\n"
+					var progress = unit.get_production_progress()
+					text += "   Progress: " + str(int(progress * 100)) + "%\n"
 	
 	text += "\nPlayer List:\n"
 	for peer_id in NetworkManager.players:
@@ -149,6 +174,7 @@ func update_info():
 	text += "\nWASD/Arrows: Pan | Q/E: Rotate | Scroll: Zoom"
 	text += "\nLeft Click: Select | Shift+Click: Add | Drag: Box select"
 	text += "\nRight Click: Move | Right Click Resource: Gather"
+	text += "\nRight Click Building: Train unit (if Town Center selected)"
 	text += "\nShift+Right Click: Queue command"
 	text += "\nESC: Return to menu"
 	
