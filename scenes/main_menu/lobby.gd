@@ -18,10 +18,29 @@ func _ready():
 	start_button.visible = multiplayer.is_server()
 	start_button.disabled = true
 	
+	# Display host IP if we're the server
+	if multiplayer.is_server():
+		var local_ip = get_local_ip()
+		status_label.text = "Host IP: " + local_ip + " | Port: 7777"
+	else:
+		status_label.text = "Players: " + str(NetworkManager.get_player_count()) + "/" + str(NetworkManager.MAX_CLIENTS)
+	
 	print("Lobby ready. Is server: ", multiplayer.is_server())
 	print("Initial players: ", NetworkManager.players)
 	
 	update_player_list()
+
+func get_local_ip() -> String:
+	"""Get the local network IP address"""
+	var addresses = IP.get_local_addresses()
+	
+	# Find the first non-localhost IPv4 address
+	for addr in addresses:
+		if addr.begins_with("192.168.") or addr.begins_with("10.") or addr.begins_with("172."):
+			return addr
+	
+	# Fallback
+	return "Unknown (check ipconfig/ifconfig)"
 
 func _on_ready_pressed():
 	var my_id = multiplayer.get_unique_id()
@@ -64,8 +83,25 @@ func load_game():
 	get_tree().change_scene_to_file("res://scenes/game/game.tscn")
 
 func _on_back_pressed():
+	if multiplayer.is_server():
+		print("Host terminating session...")
+		# Notify all clients that server is closing
+		kick_all_clients.rpc()
+		# Small delay to ensure RPC arrives
+		await get_tree().create_timer(0.1).timeout
+	else:
+		print("Client leaving game...")
+	
 	NetworkManager.disconnect_from_game()
 	get_tree().change_scene_to_file("res://scenes/main_menu/main_menu.tscn")
+
+@rpc("authority", "call_local", "reliable")
+func kick_all_clients():
+	"""Called by host to notify clients the session is ending"""
+	if not multiplayer.is_server():
+		print("Host closed the session")
+		NetworkManager.disconnect_from_game()
+		get_tree().change_scene_to_file("res://scenes/main_menu/main_menu.tscn")
 
 func _on_player_connected(peer_id: int, player_info: Dictionary):
 	print("Lobby: Player connected - ", peer_id)
@@ -102,4 +138,6 @@ func update_player_list():
 		text += "[color=" + color + "]" + ready_icon + " " + player.name + host_tag + "[/color]\n"
 	
 	player_list.text = text
-	status_label.text = "Players: " + str(NetworkManager.get_player_count()) + "/" + str(NetworkManager.MAX_CLIENTS)
+	
+	if not multiplayer.is_server():
+		status_label.text = "Players: " + str(NetworkManager.get_player_count()) + "/" + str(NetworkManager.MAX_CLIENTS)
