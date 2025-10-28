@@ -21,3 +21,8 @@ pixel_size = 0.01
 billboard = 1
 no_depth_test = true
 fixed_size = true
+
+[node name="NavigationObstacle3D" type="NavigationObstacle3D" parent="."]
+radius = 1.0
+height = 2.0
+avoidance_enabled = true

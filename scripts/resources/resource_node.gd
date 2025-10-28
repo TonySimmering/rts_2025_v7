@@ -13,6 +13,7 @@ enum ResourceType {
 @onready var mesh_instance: MeshInstance3D = $MeshInstance3D
 @onready var collision_shape: CollisionShape3D = $CollisionShape3D
 @onready var label_3d: Label3D = $Label3D
+@onready var nav_obstacle: NavigationObstacle3D = $NavigationObstacle3D
 
 var current_amount: int = 0
 var gatherers: Array = []  # Workers currently gathering
@@ -34,6 +35,7 @@ func _ready():
 	add_to_group("resource_nodes")
 	current_amount = starting_amount
 	setup_visuals()
+	setup_navigation_obstacle()
 	
 	collision_layer = 4
 	collision_mask = 2  # Enable collision with units
@@ -77,6 +79,31 @@ func setup_visuals():
 	var material = StandardMaterial3D.new()
 	material.albedo_color = TYPE_COLORS[resource_type]
 	mesh_instance.set_surface_override_material(0, material)
+
+func setup_navigation_obstacle():
+	"""Configure NavigationObstacle3D based on resource type"""
+	if not nav_obstacle:
+		return
+	
+	# Wait for navigation system to be ready
+	await get_tree().physics_frame
+	
+	if resource_type == ResourceType.WOOD:
+		# Trees: tall cylinder
+		nav_obstacle.radius = 0.5  # Slightly larger than visual for clearance
+		nav_obstacle.height = 4.0
+		nav_obstacle.position.y = 2.0  # Center of cylinder
+	else:
+		# Stone/Gold: box-like
+		nav_obstacle.radius = 1.0  # Approximate radius for 1.5x1.5 box
+		nav_obstacle.height = 1.0
+		nav_obstacle.position.y = 0.5  # Center of box
+	
+	# Enable avoidance so units path around it
+	nav_obstacle.avoidance_enabled = true
+	nav_obstacle.use_3d_avoidance = true
+	
+	print("  Nav obstacle configured for ", TYPE_NAMES[resource_type], " - radius: ", nav_obstacle.radius, ", height: ", nav_obstacle.height)
 
 func can_gather() -> bool:
 	return current_amount > 0

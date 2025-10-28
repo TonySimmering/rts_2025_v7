@@ -35,7 +35,8 @@ func set_camera(cam: Camera3D):
 func _input(event):
 	if not camera:
 		return
-			# Toggle flow field mode
+	
+	# Toggle flow field mode
 	if event is InputEventKey and event.pressed and event.keycode == KEY_F:
 		use_flow_field = not use_flow_field
 		print("Flow field mode: ", "ENABLED" if use_flow_field else "DISABLED")
@@ -82,7 +83,7 @@ func _on_left_mouse_up(mouse_pos: Vector2):
 	is_box_selecting = false
 
 func _on_right_mouse_down(mouse_pos: Vector2):
-	# Raycast to find target position
+	# Raycast to find target position or resource
 	var from = camera.project_ray_origin(mouse_pos)
 	var to = from + camera.project_ray_normal(mouse_pos) * 1000.0
 	
@@ -94,10 +95,33 @@ func _on_right_mouse_down(mouse_pos: Vector2):
 	var result = space_state.intersect_ray(query)
 	
 	if result:
+		var clicked_object = result.collider
+		
+		# Check if clicked on a resource node
+		if clicked_object.is_in_group("resource_nodes"):
+			_issue_gather_command(clicked_object)
+			return
+		
+		# Otherwise, it's a move command
 		formation_center = result.position
 		rotation_start_pos = mouse_pos
 		is_rotating_formation = true
 		formation_rotation = 0.0
+
+func _issue_gather_command(resource_node: Node):
+	"""Issue gather command to selected units"""
+	var queue_mode = Input.is_key_pressed(KEY_SHIFT)
+	var resource_type = resource_node.get_resource_type_string()
+	
+	print("Gather command: ", selected_units.size(), " units → ", resource_type, " resource", " [QUEUED]" if queue_mode else "")
+	
+	for unit in selected_units:
+		if is_instance_valid(unit) and unit.is_multiplayer_authority():
+			var command = UnitCommand.new(UnitCommand.CommandType.GATHER)
+			command.target_position = resource_node.global_position
+			command.target_entity = resource_node
+			
+			unit.queue_command(command, queue_mode)
 
 func _on_right_mouse_up():
 	if not is_rotating_formation:
