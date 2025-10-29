@@ -47,13 +47,12 @@ func _ready():
 
 func generate_terrain(seed_value: int):
 	terrain_seed = seed_value
-	print("Generating terrain with seed: ", terrain_seed)
+	print("Generating terrain mesh with seed: ", terrain_seed)
 	setup_noise(terrain_seed)
 	generate_heightmap()
 	create_mesh()
 	create_collision()
-	await bake_navigation()
-	print("Terrain generation complete!")
+	print("Terrain mesh generation complete!")
 
 func setup_noise(seed_value: int):
 	noise = FastNoiseLite.new()
@@ -90,6 +89,12 @@ func create_mesh():
 				z * terrain_scale
 			)
 			surface_tool.add_vertex(vertex_pos)
+			
+			# --- CRITICAL FIX: ADD UVS FOR TEXTURING ---
+			surface_tool.set_uv(Vector2(
+				(x * terrain_scale) / terrain_width, 
+				(z * terrain_scale) / terrain_depth
+			))
 	
 	# Build triangles
 	for z in terrain_depth - 1:
@@ -105,6 +110,10 @@ func create_mesh():
 			surface_tool.add_index(i + terrain_width)
 	
 	surface_tool.generate_normals()
+	
+	# --- CRITICAL FIX: ADD TANGENTS FOR NORMAL MAPPING ---
+	surface_tool.generate_tangents()
+	
 	terrain_mesh_instance.mesh = surface_tool.commit()
 
 func create_collision():
@@ -115,15 +124,8 @@ func create_collision():
 	terrain_collision.collision_layer = 1
 	terrain_collision.collision_mask = 1
 
-func bake_navigation():
-	print("  Baking navigation mesh...")
-	
-	if navigation_region.navigation_mesh == null:
-		navigation_region.navigation_mesh = NavigationMesh.new()
-	
-	var nav_mesh = navigation_region.navigation_mesh
-	
-	# WORKING SETTINGS FOR GOOD NAVMESH
+func _setup_nav_mesh_parameters(nav_mesh: NavigationMesh):
+	"""Helper function to set navmesh properties"""
 	nav_mesh.cell_size = 0.5
 	nav_mesh.cell_height = 0.5
 	nav_mesh.agent_height = 2.0
@@ -136,15 +138,9 @@ func bake_navigation():
 	nav_mesh.edge_max_error = 1.3
 	nav_mesh.detail_sample_distance = 6.0
 	nav_mesh.detail_sample_max_error = 1.0
-	
-	await get_tree().physics_frame
-	await get_tree().physics_frame
-	
-	var source_geometry = NavigationMeshSourceGeometryData3D.new()
-	var mesh_faces = terrain_mesh_instance.mesh.get_faces()
-	var mesh_transform = terrain_mesh_instance.global_transform
-	source_geometry.add_faces(mesh_faces, mesh_transform)
-	
+
+func _bake_nav_mesh_from_source(nav_mesh: NavigationMesh, source_geometry: NavigationMeshSourceGeometryData3D):
+	"""Helper function to perform the bake and enable the region"""
 	NavigationServer3D.bake_from_source_geometry_data(nav_mesh, source_geometry)
 	
 	navigation_region.enabled = false
@@ -153,6 +149,100 @@ func bake_navigation():
 	
 	await get_tree().physics_frame
 	print("  NavMesh baked! Polygons: ", nav_mesh.get_polygon_count())
+
+
+func bake_base_terrain_navmesh():
+	"""
+	CRITICAL FIX: This is the FIRST pass bake.
+	It bakes *only* the terrain, so units can be spawned.
+	"""
+	print("  Baking BASE navigation mesh (Terrain Only)...")
+	
+	if navigation_region.navigation_mesh == null:
+		navigation_region.navigation_mesh = NavigationMesh.new()
+	
+	var nav_mesh = navigation_region.navigation_mesh
+	_setup_nav_mesh_parameters(nav_mesh)
+	
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	
+	var source_geometry = NavigationMeshSourceGeometryData3D.new()
+	
+	# 1. Add Terrain Geometry ONLY
+	var mesh_faces = terrain_mesh_instance.mesh.get_faces()
+	var mesh_transform = terrain_mesh_instance.global_transform
+	source_geometry.add_faces(mesh_faces, mesh_transform)
+	print("    Added terrain geometry...")
+	
+	# 2. Bake!
+	await _bake_nav_mesh_from_source(nav_mesh, source_geometry)
+
+
+func bake_navigation_with_obstacles():
+	"""
+	CRITICAL FIX: This is the SECOND pass bake.
+	It bakes *after* all obstacles (buildings, resources) are spawned.
+	"""
+	print("  Baking FINAL navigation mesh (With Obstacles)...")
+	
+	if navigation_region.navigation_mesh == null:
+		navigation_region.navigation_mesh = NavigationMesh.new()
+	
+	var nav_mesh = navigation_region.navigation_mesh
+	_setup_nav_mesh_parameters(nav_mesh) # Use the same settings
+	
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	
+	var source_geometry = NavigationMeshSourceGeometryData3D.new()
+	
+	# 1. Add Terrain Geometry
+	var terrain_mesh_faces = terrain_mesh_instance.mesh.get_faces()
+	var terrain_transform = terrain_mesh_instance.global_transform
+	source_geometry.add_faces(terrain_mesh_faces, terrain_transform)
+	print("    Added terrain geometry...")
+	
+	# 2. Add Building Geometry
+	for building in get_tree().get_nodes_in_group("buildings"):
+		if not is_instance_valid(building):
+			continue
+		
+		# Assumes buildings have a MeshInstance3D child for their model
+		var mesh_instance = building.find_child("MeshInstance3D", true, false)
+		if mesh_instance and mesh_instance.mesh:
+			source_geometry.add_mesh(mesh_instance.mesh, mesh_instance.global_transform)
+			print("    Added building: ", building.name)
+		else:
+			# Fallback: check for StaticBody3D with CollisionShape3D
+			var static_body = building.find_child("StaticBody3D", true, false)
+			if static_body:
+				for child in static_body.get_children():
+					if child is CollisionShape3D and child.shape:
+						source_geometry.add_collision_shape(child.shape, child.global_transform)
+						print("    Added building collision: ", building.name)
+	
+	# 3. Add Resource Geometry
+	for resource in get_tree().get_nodes_in_group("resources"):
+		if not is_instance_valid(resource):
+			continue
+			
+		# Assumes resources have a MeshInstance3D for their model
+		var mesh_instance = resource.find_child("MeshInstance3D", true, false)
+		if mesh_instance and mesh_instance.mesh:
+			source_geometry.add_mesh(mesh_instance.mesh, mesh_instance.global_transform)
+			print("    Added resource: ", resource.name)
+		else:
+			# Fallback: check for StaticBody3D with CollisionShape3D
+			var static_body = resource.find_child("StaticBody3D", true, false)
+			if static_body:
+				for child in static_body.get_children():
+					if child is CollisionShape3D and child.shape:
+						source_geometry.add_collision_shape(child.shape, child.global_transform)
+						print("    Added resource collision: ", resource.name)
+
+	# 4. Bake!
+	await _bake_nav_mesh_from_source(nav_mesh, source_geometry)
 
 func spawn_resource_nodes():
 	"""Spawn all resources - called from game.gd after buildings"""
@@ -235,6 +325,7 @@ func spawn_tree_rpc(position: Vector3, index: int):
 	tree.global_position = position
 	tree.resource_type = 1
 	tree.name = "Tree_%d" % index
+	tree.add_to_group("resources") # Add to group for navmesh baking
 	add_child(tree)
 
 @rpc("authority", "call_local", "reliable") 
@@ -243,6 +334,7 @@ func spawn_resource_rpc(resource_type: int, position: Vector3, index: int):
 	node.global_position = position
 	node.resource_type = resource_type
 	node.name = "Resource_%d_%d" % [resource_type, index]
+	node.add_to_group("resources") # Add to group for navmesh baking
 	add_child(node)
 
 func get_height_at_position(pos: Vector3) -> float:

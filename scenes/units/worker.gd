@@ -82,6 +82,10 @@ func setup_agent():
 	await get_tree().physics_frame
 	await get_tree().physics_frame
 	
+	if not is_instance_valid(navigation_agent):
+		push_error("NavigationAgent is invalid on setup!")
+		return
+	
 	navigation_agent.avoidance_enabled = true
 	navigation_agent.radius = 0.5
 	navigation_agent.max_neighbors = 10
@@ -186,18 +190,33 @@ func process_movement(delta):
 	if navigation_agent.is_navigation_finished():
 		print("Navigation finished!")
 		
-		# Check if we reached a resource for gathering
+		# --- CRITICAL FIX: GATHERING LOGIC ---
 		if current_command and current_command.type == UnitCommand.CommandType.GATHER:
 			if target_resource and is_instance_valid(target_resource):
 				var distance = global_position.distance_to(target_resource.global_position)
 				if distance <= GATHER_RANGE:
+					# Reached resource, start gathering
 					print("Reached resource, starting gathering")
 					state = UnitState.GATHERING
 					velocity = Vector3.ZERO
 					target_resource.start_gathering(self)
 					play_animation("Idle")
 					return
+				else:
+					# FIX: Nav finished but not in range. 
+					# Force state to GATHERING, which will check range and re-path.
+					print("Nav finished but not in GATHER_RANGE. Forcing GATHER state.")
+					state = UnitState.GATHERING
+					velocity = Vector3.ZERO
+					play_animation("Idle")
+					return
+			else:
+				# Target resource became invalid during move
+				print("Target resource invalid, stopping command.")
 		
+		# --- END OF GATHERING FIX ---
+
+		# Default behavior (for MOVE commands or failed GATHER)
 		state = UnitState.IDLE
 		velocity.x = 0
 		velocity.z = 0
@@ -221,20 +240,33 @@ func process_movement(delta):
 		if distance_moved < stuck_distance_threshold and distance_to_target > 2.0:
 			stuck_timer += stuck_check_interval
 			
+			# --- CRITICAL FIX: STUCK LOGIC ---
 			if stuck_timer >= max_stuck_time:
-				print("⚠ Unit stuck! Trying alternative path...")
+				print("⚠ Unit stuck! Trying alternative nearby point...")
 				
 				var nav_map = get_world_3d().navigation_map
-				var nearby_target = navigation_agent.target_position + Vector3(
-					randf_range(-3, 3),
+				# Find a point near the *current* position, not the final target
+				var nearby_target = global_position + Vector3(
+					randf_range(-4, 4),
 					0,
-					randf_range(-3, 3)
+					randf_range(-4, 4)
 				)
-				var closest = NavigationServer3D.map_get_closest_point(nav_map, nearby_target)
+				var closest_point = NavigationServer3D.map_get_closest_point(nav_map, nearby_target)
 				
-				print("  Retargeting to nearby position: ", closest)
-				navigation_agent.target_position = closest
+				# Create a temporary move command to this point
+				var temp_move = UnitCommand.new(UnitCommand.CommandType.MOVE)
+				temp_move.target_position = closest_point
+				
+				# Insert this command *before* the current one
+				if current_command:
+					command_queue.push_front(current_command)
+				current_command = temp_move
+				
+				print("  Inserting temporary move to: ", closest_point)
+				_execute_command(current_command) # Execute the new temp move
 				stuck_timer = 0.0
+				return # Exit process_movement for this frame
+			# --- END OF STUCK FIX ---
 		else:
 			stuck_timer = 0.0
 		
@@ -396,6 +428,13 @@ func queue_command(command: UnitCommand, append: bool = false):
 func queue_command_rpc(command_data: Dictionary, append: bool):
 	var command = UnitCommand.from_dict(command_data)
 	
+	# --- CRITICAL FIX: Resolve NodePath to Node ---
+	if command.target_path:
+		command.target_entity = get_node_or_null(command.target_path)
+		if not is_instance_valid(command.target_entity):
+			print("✗ Failed to find target entity from path: ", command.target_path)
+	# --- END OF FIX ---
+	
 	if append:
 		command_queue.append(command)
 		print("📋 Queued command: ", command, " (queue size: ", command_queue.size(), ")")
@@ -410,6 +449,9 @@ func queue_command_rpc(command_data: Dictionary, append: bool):
 		print("📋 New command: ", command)
 
 func _execute_command(command: UnitCommand):
+	if not command:
+		return
+		
 	match command.type:
 		UnitCommand.CommandType.MOVE:
 			_execute_move_command(command)
@@ -430,6 +472,11 @@ func _execute_move_command(command: UnitCommand):
 	var facing_angle = command.facing_angle
 	
 	var nav_map = get_world_3d().navigation_map
+	if not nav_map.is_valid():
+		push_error("Cannot execute move: Invalid navigation map!")
+		current_command = null
+		return
+		
 	var path = NavigationServer3D.map_get_path(
 		nav_map,
 		global_position,
@@ -438,11 +485,19 @@ func _execute_move_command(command: UnitCommand):
 	)
 	
 	if path.size() < 2:
-		print("✗ NO VALID PATH from ", global_position, " to ", target_position)
-		current_command = null
-		return
-	
-	print("✓ Valid path with ", path.size(), " waypoints")
+		# Try to find closest valid point
+		var closest_point = NavigationServer3D.map_get_closest_point(nav_map, target_position)
+		path = NavigationServer3D.map_get_path(nav_map, global_position, closest_point, true)
+		
+		if path.size() < 2:
+			print("✗ NO VALID PATH from ", global_position, " to ", target_position)
+			current_command = null
+			return
+		else:
+			print("✓ Valid path found to closest point: ", closest_point)
+			target_position = closest_point
+	else:
+		print("✓ Valid path with ", path.size(), " waypoints")
 	
 	navigation_agent.target_position = target_position
 	
@@ -459,12 +514,12 @@ func _execute_gather_command(command: UnitCommand):
 	target_resource = command.target_entity
 	
 	if not target_resource or not is_instance_valid(target_resource):
-		print("✗ Invalid resource target")
+		print("✗ Invalid resource target for GATHER")
 		current_command = null
 		return
 	
-	if not target_resource.can_gather():
-		print("✗ Resource depleted")
+	if not target_resource.has_method("can_gather") or not target_resource.can_gather():
+		print("✗ Resource depleted or invalid")
 		current_command = null
 		return
 	
@@ -474,8 +529,22 @@ func _execute_gather_command(command: UnitCommand):
 	if not current_dropoff or not is_instance_valid(current_dropoff):
 		find_nearest_dropoff()
 	
-	navigation_agent.target_position = target_resource.global_position
+	# Get a position near the resource
+	var target_pos = target_resource.global_position
+	var nav_map = get_world_3d().navigation_map
+	if not nav_map.is_valid():
+		push_error("Cannot execute gather: Invalid navigation map!")
+		current_command = null
+		return
+		
+	var closest_point = NavigationServer3D.map_get_closest_point(nav_map, target_pos)
+	
+	navigation_agent.target_position = closest_point
 	state = UnitState.MOVING
+	
+	stuck_timer = 0.0
+	check_timer = 0.0
+	last_check_position = global_position
 
 func resource_depleted():
 	if state == UnitState.GATHERING:

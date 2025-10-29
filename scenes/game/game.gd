@@ -10,6 +10,7 @@ var selection_manager: Node = null
 var selection_box: Control = null
 var spawn_manager: Node = null
 var production_ui: Control = null
+var terrain: Node3D = null # Store terrain reference
 
 func _ready():
 	print("=== GAME SCENE LOADED ===")
@@ -18,13 +19,43 @@ func _ready():
 	print("Connected Players:", NetworkManager.players)
 	print("Game Seed:", NetworkManager.game_seed)
 	
+	terrain = get_node_or_null("Terrain")
+	if not terrain or not terrain.has_method("generate_terrain"):
+		push_error("Terrain node not found!")
+		return
+	
 	spawn_local_camera()
 	setup_selection_system()
 	setup_production_ui()
+	
+	# --- CRITICAL FIX: RE-ORDERED STARTUP (TWO-PASS BAKE) ---
+	
+	# 1. Generate terrain mesh (but DO NOT bake navmesh yet)
 	await generate_terrain_with_seed()
+	
+	# 2. Bake a BASE navmesh with *only* the terrain
+	if terrain.has_method("bake_base_terrain_navmesh"):
+		await terrain.bake_base_terrain_navmesh()
+	else:
+		push_error("Terrain script missing 'bake_base_terrain_navmesh'!")
+		return
+	
+	# 3. Setup spawn system (it can now use the base navmesh)
 	setup_spawn_system()
+	
+	# 4. Spawn buildings and units (server only)
 	await spawn_town_centers_and_units()
-	spawn_resources_after_buildings()
+	
+	# 5. Spawn resources (server only)
+	await spawn_resources_after_buildings()
+	
+	# 6. NOW, RE-BAKE the navmesh with all new obstacles included
+	if terrain.has_method("bake_navigation_with_obstacles"):
+		await terrain.bake_navigation_with_obstacles()
+	else:
+		push_error("Terrain script missing 'bake_navigation_with_obstacles'!")
+	
+	# --- END OF CRITICAL FIX ---
 	
 	NetworkManager.player_connected.connect(_on_player_joined)
 	NetworkManager.player_disconnected.connect(_on_player_left)
@@ -39,7 +70,6 @@ func spawn_local_camera():
 	local_camera = CAMERA_RIG_SCENE.instantiate()
 	add_child(local_camera)
 	
-	var terrain = get_node_or_null("Terrain")
 	if terrain:
 		local_camera.set_terrain(terrain)
 	
@@ -70,9 +100,8 @@ func spawn_resources_after_buildings():
 	if not multiplayer.is_server():
 		return
 	
-	var terrain = get_node_or_null("Terrain")
-	if terrain and terrain.has_method("spawn_resource_nodes"):  # Changed
-		await terrain.spawn_resource_nodes()  # Changed
+	if terrain and terrain.has_method("spawn_resource_nodes"):
+		await terrain.spawn_resource_nodes()
 
 func setup_production_ui():
 	"""Setup production UI and connect to selection manager"""
@@ -99,7 +128,7 @@ func _on_building_deselected():
 func setup_spawn_system():
 	spawn_manager = Node.new()
 	spawn_manager.set_script(load("res://scripts/spawn_manager.gd"))
-	spawn_manager.terrain = get_node_or_null("Terrain")
+	spawn_manager.terrain = terrain
 	spawn_manager.name = "SpawnManager"
 	add_child(spawn_manager)
 	print("Spawn system initialized")
@@ -118,7 +147,6 @@ func spawn_town_centers_and_units():
 	await get_tree().create_timer(0.3).timeout
 	
 	# Then spawn workers around Town Centers
-	var terrain = get_node_or_null("Terrain")
 	var map_size = Vector2(128, 128)
 	
 	for player_id in NetworkManager.players:
@@ -134,13 +162,9 @@ func _on_resources_changed(player_id: int, resources: Dictionary):
 		update_info()
 
 func generate_terrain_with_seed():
-	var terrain = get_node_or_null("Terrain")
-	if not terrain or not terrain.has_method("generate_terrain"):
-		push_error("Terrain node not found!")
-		return
-	
+	# This function now ONLY generates the mesh, it does not bake nav
 	await terrain.generate_terrain(NetworkManager.game_seed)
-	print("Terrain ready for spawning")
+	print("Terrain mesh ready for spawning")
 
 func _process(_delta):
 	if Input.is_action_just_pressed("ui_cancel"):
