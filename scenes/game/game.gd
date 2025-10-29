@@ -4,12 +4,14 @@ extends Node3D
 
 const CAMERA_RIG_SCENE = preload("res://scenes/camera/camera_rig.tscn")
 const PRODUCTION_UI_SCENE = preload("res://scripts/ui/production_ui.tscn")
+const GAME_UI_SCENE = preload("res://scripts/ui/game_ui.tscn")
 
 var local_camera: Node3D = null
 var selection_manager: Node = null
 var selection_box: Control = null
 var spawn_manager: Node = null
 var production_ui: Control = null
+var game_ui: Control = null
 
 func _ready():
 	print("=== GAME SCENE LOADED ===")
@@ -33,7 +35,9 @@ func _ready():
 	for player_id in NetworkManager.players:
 		ResourceManager.initialize_player_resources(player_id)
 	
-	update_info()
+	# Hide old info label since we have new UI
+	if info_label:
+		info_label.visible = false
 
 func spawn_local_camera():
 	local_camera = CAMERA_RIG_SCENE.instantiate()
@@ -66,16 +70,22 @@ func setup_selection_system():
 	print("Selection system initialized")
 
 func setup_production_ui():
-	"""Setup production UI and connect to selection manager"""
+	"""Setup production UI and main game UI"""
+	# Main game UI with glass aesthetic
+	game_ui = GAME_UI_SCENE.instantiate()
+	$CanvasLayer.add_child(game_ui)
+	
+	# Legacy production UI for building commands
 	production_ui = PRODUCTION_UI_SCENE.instantiate()
 	$CanvasLayer.add_child(production_ui)
 	
 	# Connect to selection manager signals
 	if selection_manager:
+		game_ui.set_selection_manager(selection_manager)
 		selection_manager.building_selected.connect(_on_building_selected)
 		selection_manager.building_deselected.connect(_on_building_deselected)
 	
-	print("Production UI initialized")
+	print("Game UI and Production UI initialized")
 
 func _on_building_selected(building: Node):
 	"""Called when a building is selected"""
@@ -115,14 +125,23 @@ func spawn_town_centers_and_units():
 	for player_id in NetworkManager.players:
 		var spawn_center = spawn_manager.get_spawn_location_for_player(player_id, map_size)
 		spawn_manager.spawn_starting_units(player_id, spawn_center)
+	
+	# Start game timer after spawning complete
+	await get_tree().create_timer(0.5).timeout
+	_on_all_players_loaded()
+
+func _on_all_players_loaded():
+	"""Called when all players have spawned and are ready"""
+	if game_ui:
+		game_ui.start_timer()
+		print("Game timer started")
 
 func _on_selection_changed(selected_units: Array):
 	print("Selection changed: ", selected_units.size(), " units/buildings selected")
-	update_info()
 
 func _on_resources_changed(player_id: int, resources: Dictionary):
-	if player_id == multiplayer.get_unique_id():
-		update_info()
+	# Resources now updated automatically by game_ui
+	pass
 
 func generate_terrain_with_seed():
 	var terrain = get_node_or_null("Terrain")
@@ -140,72 +159,6 @@ func _process(_delta):
 
 func _on_player_joined(peer_id: int, player_info: Dictionary):
 	print("Game scene notified: Player joined - ", peer_id)
-	update_info()
 
 func _on_player_left(peer_id: int):
 	print("Game scene notified: Player left - ", peer_id)
-	update_info()
-
-func update_info():
-	var my_id = multiplayer.get_unique_id()
-	var my_resources = ResourceManager.get_player_resources(my_id)
-	
-	var text = "GAME RUNNING\n\n"
-	
-	# Resources display
-	text += "💰 Resources:\n"
-	text += "  Gold: " + str(my_resources.get("gold", 0)) + "\n"
-	text += "  Wood: " + str(my_resources.get("wood", 0)) + "\n"
-	text += "  Stone: " + str(my_resources.get("stone", 0)) + "\n\n"
-	
-	text += "Server: " + str(multiplayer.is_server()) + "\n"
-	text += "My ID: " + str(my_id) + "\n"
-	text += "Game Seed: " + str(NetworkManager.game_seed) + "\n"
-	text += "Players connected: " + str(NetworkManager.get_player_count()) + "\n"
-	
-	if selection_manager:
-		var selected = selection_manager.get_selected_units()
-		var selected_building = selection_manager.get_selected_building()
-		
-		if selected_building and is_instance_valid(selected_building):
-			text += "Selected: " + selected_building.building_name + "\n"
-			
-			# Show production info for buildings
-			if selected_building.has_method("get_queue_size"):
-				var prod_queue = selected_building.get_queue_size()
-				if prod_queue > 0:
-					text += "🏭 Production queue: " + str(prod_queue) + "\n"
-					var progress = selected_building.get_production_progress()
-					text += "   Progress: " + str(int(progress * 100)) + "%\n"
-		elif selected.size() > 0:
-			text += "Selected units: " + str(selected.size()) + "\n"
-			
-			if is_instance_valid(selected[0]):
-				var unit = selected[0]
-				
-				# Show carrying info for workers
-				if unit.has_method("get_carried_amount"):
-					var carried = unit.get_carried_amount()
-					if carried > 0:
-						text += "💼 Carrying: " + str(carried) + " resources\n"
-				
-				# Show command queue
-				if unit.has_method("get_command_queue_size"):
-					var queue_size = unit.get_command_queue_size()
-					if queue_size > 0:
-						text += "📋 Queued commands: " + str(queue_size) + "\n"
-	
-	text += "\nPlayer List:\n"
-	for peer_id in NetworkManager.players:
-		var player = NetworkManager.players[peer_id]
-		text += "  - " + player.name + " (ID: " + str(peer_id) + ")\n"
-	
-	text += "\nControls:"
-	text += "\nWASD/Arrows: Pan | Q/E: Rotate | Scroll: Zoom"
-	text += "\nLeft Click: Select | Shift+Click: Add | Drag: Box select"
-	text += "\nRight Click: Move (units only) | Right Click Resource: Gather"
-	text += "\nSelect Town Center → Use UI to train workers"
-	text += "\nShift+Right Click: Queue command"
-	text += "\nESC: Return to menu"
-	
-	info_label.text = text

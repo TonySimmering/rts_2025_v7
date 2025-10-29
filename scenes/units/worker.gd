@@ -132,13 +132,6 @@ func _physics_process(delta):
 
 # ============ RESOURCE CARRYING SYSTEM ============
 
-func get_carried_amount() -> int:
-	"""Get total amount of resources being carried"""
-	var total = 0
-	for amount in carrying_resources.values():
-		total += amount
-	return total
-
 func is_carrying_resources() -> bool:
 	return get_carried_amount() > 0
 
@@ -547,3 +540,18 @@ func play_animation(anim_name: String):
 
 func get_owner_id() -> int:
 	return player_id
+	
+func get_state_name() -> String:
+	match state:
+		UnitState.IDLE: return "Idle"
+		UnitState.MOVING: return "Moving"
+		UnitState.GATHERING: return "Gathering"
+		UnitState.RETURNING: return "Returning"
+		UnitState.DEPOSITING: return "Depositing"
+	return "Unknown"
+
+func get_carried_amount() -> int:
+	var total = 0
+	for amount in carrying_resources.values():
+		total += amount
+	return total
