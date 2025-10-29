@@ -61,8 +61,6 @@ extends Node3D
 const RESOURCE_NODE_SCENE = preload("res://scripts/resources/resource_node.tscn")
 const MIN_DISTANCE_FROM_TOWN_CENTER: float = 8.0
 
-var planned_town_center_positions: Array[Vector3] = []
-
 var noise: FastNoiseLite
 var heightmap: Array = []
 var terrain_seed: int = 0
@@ -82,36 +80,8 @@ func generate_terrain(seed_value: int):
 	create_collision()
 	await bake_navigation()
 	
-	# Resources spawned separately now
+	# DON'T spawn resources here anymore
 	print("Terrain generation complete! (Resources not yet spawned)")
-	
-func spawn_resources_with_exclusions(exclusion_positions: Array[Vector3]):
-	"""Spawn resources avoiding specific positions (called after terrain generation)"""
-	if not multiplayer.is_server():
-		print("⚠ Not server, skipping resource spawn")
-		return
-	
-	print("\n=== SPAWNING RESOURCES ===")
-	print("Exclusion positions: ", exclusion_positions.size())
-	
-	# Store exclusions for use in spawn functions
-	planned_town_center_positions = exclusion_positions
-	
-	spawn_forests()
-	
-	print("\nSpawning gold nodes: ", num_gold_nodes)
-	for i in range(num_gold_nodes):
-		spawn_resource(0, i)
-	
-	print("Spawning stone nodes: ", num_stone_nodes)
-	for i in range(num_stone_nodes):
-		spawn_resource(2, i)
-	
-	await get_tree().create_timer(0.5).timeout
-	
-	print("✓ Resource spawning complete!")
-	print("Total resources in scene: ", get_tree().get_nodes_in_group("resource_nodes").size())
-	print("=========================\n")
 
 func setup_noise(seed_value: int):
 	noise = FastNoiseLite.new()
@@ -515,11 +485,6 @@ func bake_navigation():
 	print("  World navigation map RID: ", world_nav_map)
 	print("  NavigationRegion map RID: ", navigation_region.get_navigation_map())
 
-func set_town_center_spawn_positions(positions: Array[Vector3]):
-	"""Called by game.gd before terrain generation to reserve space"""
-	planned_town_center_positions = positions
-	print("Terrain received ", positions.size(), " Town Center spawn positions")
-	
 func spawn_resource_nodes():
 	"""Spawn resource nodes across the terrain (server only)"""
 	if not multiplayer.is_server():
@@ -646,12 +611,7 @@ func spawn_tree_at_position(position: Vector3, index: int):
 	spawn_resource_rpc.rpc(1, position, index)
 
 func get_town_center_positions() -> Array[Vector3]:
-	"""Get all Town Center positions (planned or spawned)"""
-	# First check if we have planned positions (before spawning)
-	if not planned_town_center_positions.is_empty():
-		return planned_town_center_positions
-	
-	# Otherwise get already-spawned Town Centers
+	"""Get all Town Center positions from the scene"""
 	var positions: Array[Vector3] = []
 	var town_centers = get_tree().get_nodes_in_group("buildings")
 	
