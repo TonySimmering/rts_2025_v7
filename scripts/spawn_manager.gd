@@ -3,6 +3,8 @@ extends Node
 # Spawn settings
 const WORKERS_PER_PLAYER = 3
 const SPAWN_RADIUS = 8.0  # Spawn workers around Town Center
+const TOWN_CENTER_FLATTEN_RADIUS = 6.0  # Flatten this much terrain
+const FLATTEN_BLEND_PADDING = 3.0  # Blend dirt texture to grass
 
 # Preload scenes
 const WORKER_SCENE = preload("res://scenes/units/worker.tscn")
@@ -23,6 +25,12 @@ func spawn_town_centers():
 	
 	for player_id in NetworkManager.players:
 		var spawn_center = get_spawn_location_for_player(player_id, map_size)
+		
+		# Flatten terrain at spawn location BEFORE spawning the Town Center
+		if terrain and terrain.has_method("flatten_terrain_at_position"):
+			await terrain.flatten_terrain_at_position(spawn_center, TOWN_CENTER_FLATTEN_RADIUS, FLATTEN_BLEND_PADDING)
+			print("  Terrain flattened for player ", player_id, " at ", spawn_center)
+		
 		spawn_town_center_networked.rpc(player_id, spawn_center)
 		print("  Spawned Town Center for player ", player_id, " at ", spawn_center)
 	
@@ -106,4 +114,10 @@ func get_spawn_location_for_player(player_id: int, map_size: Vector2) -> Vector3
 		index = 0
 	
 	index = index % spawn_positions.size()
-	return spawn_positions[index]
+	
+	# Get the height at this position from terrain
+	var spawn_pos = spawn_positions[index]
+	if terrain and terrain.has_method("get_height_at_position"):
+		spawn_pos.y = terrain.get_height_at_position(spawn_pos)
+	
+	return spawn_pos

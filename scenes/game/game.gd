@@ -103,7 +103,7 @@ func spawn_town_centers_and_units():
 	await get_tree().create_timer(0.5).timeout
 	
 	# First spawn Town Centers
-	spawn_manager.spawn_town_centers()
+	await spawn_manager.spawn_town_centers()
 	
 	# Wait for Town Centers to be ready
 	await get_tree().create_timer(0.3).timeout
