@@ -532,6 +532,10 @@ func spawn_forests():
 			
 			forest_center = Vector3(center_x, 0, center_z)
 			
+			if is_too_close_to_town_centers(forest_center, town_centers):
+				attempts += 1
+				continue
+				
 			var too_close = false
 			for existing_center in forest_centers:
 				if forest_center.distance_to(existing_center) < min_forest_spacing:
@@ -579,6 +583,10 @@ func spawn_forests():
 				
 				var tree_y = get_height_at_position(Vector3(tree_x, 0, tree_z))
 				var tree_pos = Vector3(tree_x, tree_y, tree_z)
+				
+				if is_too_close_to_town_centers(tree_pos, town_centers):
+					attempts += 1
+					continue
 				
 				var too_close = false
 				for existing_tree in trees_in_forest:
