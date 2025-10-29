@@ -59,6 +59,7 @@ extends Node3D
 @onready var collision_shape: CollisionShape3D = $NavigationRegion3D/TerrainCollision/CollisionShape3D
 
 const RESOURCE_NODE_SCENE = preload("res://scripts/resources/resource_node.tscn")
+const MIN_DISTANCE_FROM_TOWN_CENTER: float = 8.0
 
 var noise: FastNoiseLite
 var heightmap: Array = []
@@ -514,7 +515,8 @@ func spawn_forests():
 	"""Generate realistic forest clusters"""
 	print("\n--- FOREST GENERATION ---")
 	print("Generating ", num_forests, " forest clusters...")
-	
+	var town_centers = get_town_center_positions()
+		
 	var forest_centers: Array[Vector3] = []
 	var min_forest_spacing = forest_radius * 2.5
 	
@@ -601,9 +603,28 @@ func spawn_forests():
 func spawn_tree_at_position(position: Vector3, index: int):
 	spawn_resource_rpc.rpc(1, position, index)
 
+func get_town_center_positions() -> Array[Vector3]:
+	"""Get all Town Center positions in the scene"""
+	var positions: Array[Vector3] = []
+	var town_centers = get_tree().get_nodes_in_group("buildings")
+	
+	for building in town_centers:
+		if is_instance_valid(building) and "town_center" in building.name.to_lower():
+			positions.append(building.global_position)
+	
+	return positions
+
+func is_too_close_to_town_centers(position: Vector3, town_centers: Array[Vector3]) -> bool:
+	"""Check if position is too close to any Town Center"""
+	for tc_pos in town_centers:
+		if position.distance_to(tc_pos) < MIN_DISTANCE_FROM_TOWN_CENTER:
+			return true
+	return false
+
 func spawn_resource(resource_type: int, index: int):
-	"""Spawn a single resource node (gold/stone)"""
-	var max_attempts = 50
+	"""Spawn a single resource node (gold/stone) away from Town Centers"""
+	var max_attempts = 100  # Increased from 50
+	var town_centers = get_town_center_positions()
 	
 	for attempt in range(max_attempts):
 		var random_x = randf_range(10, terrain_width - 10)
@@ -613,11 +634,15 @@ func spawn_resource(resource_type: int, index: int):
 		var height = get_height_at_position(world_pos)
 		world_pos.y = height
 		
+		# Check distance from Town Centers
+		if is_too_close_to_town_centers(world_pos, town_centers):
+			continue  # Try again
+		
 		spawn_resource_rpc.rpc(resource_type, world_pos, index)
 		return
 	
-	push_warning("Failed to spawn resource after ", max_attempts, " attempts")
-
+	push_warning("Failed to spawn resource after ", max_attempts, " attempts (may be too close to Town Centers)")
+	
 @rpc("authority", "call_local", "reliable")
 func spawn_resource_rpc(resource_type: int, position: Vector3, index: int):
 	"""Spawn a resource node on all clients"""
