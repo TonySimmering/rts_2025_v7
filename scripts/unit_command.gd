@@ -35,13 +35,19 @@ func _to_string() -> String:
 
 # Serialization for network sync
 func to_dict() -> Dictionary:
-	return {
+	var dict = {
 		"type": type,
 		"target_position": target_position,
 		"facing_angle": facing_angle,
 		"building_type": building_type,
 		"metadata": metadata
 	}
+	
+	# Serialize entity path for network sync (can't send Node directly)
+	if target_entity and is_instance_valid(target_entity):
+		dict["target_entity_path"] = target_entity.get_path()
+	
+	return dict
 
 static func from_dict(data: Dictionary) -> UnitCommand:
 	var cmd = UnitCommand.new(data.get("type", CommandType.MOVE))
@@ -49,4 +55,8 @@ static func from_dict(data: Dictionary) -> UnitCommand:
 	cmd.facing_angle = data.get("facing_angle", 0.0)
 	cmd.building_type = data.get("building_type", "")
 	cmd.metadata = data.get("metadata", {})
+	
+	# Note: target_entity will be resolved in worker.gd based on position
+	# since Node references can't be sent over network
+	
 	return cmd

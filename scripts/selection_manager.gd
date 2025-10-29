@@ -135,12 +135,12 @@ func _issue_gather_command(resource_node: Node):
 	for unit in selected_units:
 		if is_instance_valid(unit) and unit.is_multiplayer_authority():
 			# Check if unit can gather
-			if not unit.has_method("can_gather"):
+			if not unit.has_method("queue_command"):
 				continue
 			
 			var command = UnitCommand.new(UnitCommand.CommandType.GATHER)
-			command.target_resource = resource_node
-			command.resource_type = resource_type
+			command.target_entity = resource_node  # FIX: Use target_entity not target_resource
+			command.target_position = resource_node.global_position  # FIX: Add position for network sync
 			
 			# Queue or replace based on shift key
 			unit.queue_command(command, queue_mode)

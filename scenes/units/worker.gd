@@ -456,10 +456,15 @@ func _execute_move_command(command: UnitCommand):
 	state = UnitState.MOVING
 
 func _execute_gather_command(command: UnitCommand):
-	target_resource = command.target_entity
+	# If we have target_entity, use it directly (local command)
+	if command.target_entity and is_instance_valid(command.target_entity):
+		target_resource = command.target_entity
+	else:
+		# Network command - find resource at target position
+		target_resource = _find_resource_at_position(command.target_position)
 	
 	if not target_resource or not is_instance_valid(target_resource):
-		print("✗ Invalid resource target")
+		print("✗ Invalid resource target at ", command.target_position)
 		current_command = null
 		return
 	
@@ -476,6 +481,23 @@ func _execute_gather_command(command: UnitCommand):
 	
 	navigation_agent.target_position = target_resource.global_position
 	state = UnitState.MOVING
+
+func _find_resource_at_position(pos: Vector3) -> Node:
+	"""Find resource node near the given position (for network commands)"""
+	var resources = get_tree().get_nodes_in_group("resource_nodes")
+	var closest: Node = null
+	var closest_dist = 5.0  # Max search radius
+	
+	for resource in resources:
+		if not is_instance_valid(resource):
+			continue
+		
+		var dist = resource.global_position.distance_to(pos)
+		if dist < closest_dist:
+			closest_dist = dist
+			closest = resource
+	
+	return closest
 
 func resource_depleted():
 	if state == UnitState.GATHERING:
