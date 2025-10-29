@@ -21,8 +21,8 @@ func _ready():
 	spawn_local_camera()
 	setup_selection_system()
 	setup_production_ui()
+	setup_spawn_system()  # <-- MOVED HERE (was after generate_terrain)
 	await generate_terrain_with_seed()
-	setup_spawn_system()
 	spawn_town_centers_and_units()
 	
 	NetworkManager.player_connected.connect(_on_player_joined)
@@ -126,11 +126,18 @@ func _on_resources_changed(player_id: int, resources: Dictionary):
 
 func generate_terrain_with_seed():
 	var terrain = get_node_or_null("Terrain")
-	if terrain and terrain.has_method("generate_terrain"):
-		await terrain.generate_terrain(NetworkManager.game_seed)
-		print("Terrain generation complete, ready for spawning")
-	else:
+	if not terrain or not terrain.has_method("generate_terrain"):
 		push_error("Terrain node not found!")
+		return
+	
+	# Get planned Town Center positions BEFORE terrain generation
+	if spawn_manager:
+		var map_size = Vector2(128, 128)
+		var spawn_positions = spawn_manager.get_all_spawn_positions(map_size)
+		terrain.set_town_center_spawn_positions(spawn_positions)
+	
+	await terrain.generate_terrain(NetworkManager.game_seed)
+	print("Terrain generation complete, ready for spawning")
 
 func _process(_delta):
 	if Input.is_action_just_pressed("ui_cancel"):

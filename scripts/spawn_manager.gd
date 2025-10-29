@@ -35,6 +35,17 @@ func spawn_town_centers():
 		print("  Spawned Town Center for player ", player_id, " at ", spawn_center)
 	
 	print("=== TOWN CENTERS SPAWNED ===\n")
+	
+func get_all_spawn_positions(map_size: Vector2) -> Array[Vector3]:
+	"""Get spawn positions for all players (called before terrain generation)"""
+	var positions: Array[Vector3] = []
+	
+	for player_id in NetworkManager.players:
+		var pos = get_spawn_location_for_player(player_id, map_size)
+		positions.append(pos)
+		print("  Planned spawn for player ", player_id, ": ", pos)
+	
+	return positions	
 
 @rpc("authority", "call_local", "reliable")
 func spawn_town_center_networked(player_id: int, spawn_pos: Vector3):
