@@ -226,112 +226,112 @@ func _bake_nav_mesh_from_source(nav_mesh: NavigationMesh, source_geometry: Navig
 
 
 func bake_base_terrain_navmesh():
-        """
-        CRITICAL FIX: This is the FIRST pass bake.
-        It bakes *only* the terrain, so units can be spawned.
-        """
-        print("  Baking BASE navigation mesh (Terrain Only)...")
+	"""
+	CRITICAL FIX: This is the FIRST pass bake.
+	It bakes *only* the terrain, so units can be spawned.
+	"""
+	print("  Baking BASE navigation mesh (Terrain Only)...")
 
-        if navigation_region.navigation_mesh == null:
-                navigation_region.navigation_mesh = NavigationMesh.new()
+	if navigation_region.navigation_mesh == null:
+		navigation_region.navigation_mesh = NavigationMesh.new()
 
-        var nav_mesh = navigation_region.navigation_mesh
-        _setup_nav_mesh_parameters(nav_mesh)
+	var nav_mesh = navigation_region.navigation_mesh
+	_setup_nav_mesh_parameters(nav_mesh)
 
-        await get_tree().physics_frame
-        await get_tree().physics_frame
+	await get_tree().physics_frame
+	await get_tree().physics_frame
 
-        var source_geometry = NavigationMeshSourceGeometryData3D.new()
+	var source_geometry = NavigationMeshSourceGeometryData3D.new()
 
-        # 1. Add Terrain Geometry ONLY
-        if terrain_mesh_instance.mesh == null:
-                push_error("Cannot bake navmesh: terrain mesh is missing")
-                return
+	# 1. Add Terrain Geometry ONLY
+	if terrain_mesh_instance.mesh == null:
+		push_error("Cannot bake navmesh: terrain mesh is missing")
+		return
 
-        var mesh_faces = terrain_mesh_instance.mesh.get_faces()
-        if mesh_faces.is_empty():
-                push_error("Cannot bake navmesh: terrain mesh returned zero faces")
-                return
+	var mesh_faces = terrain_mesh_instance.mesh.get_faces()
+	if mesh_faces.is_empty():
+		push_error("Cannot bake navmesh: terrain mesh returned zero faces")
+		return
 
-        var mesh_transform = terrain_mesh_instance.global_transform
-        source_geometry.add_faces(mesh_faces, mesh_transform)
-        print("    Added terrain geometry...")
+	var mesh_transform = terrain_mesh_instance.global_transform
+	source_geometry.add_faces(mesh_faces, mesh_transform)
+	print("    Added terrain geometry...")
 
-        # 2. Bake!
-        await _bake_nav_mesh_from_source(nav_mesh, source_geometry)
+	# 2. Bake!
+	await _bake_nav_mesh_from_source(nav_mesh, source_geometry)
 
 func bake_navigation_with_obstacles():
-        """
-        CRITICAL FIX: This is the SECOND pass bake.
-        It bakes *after* all obstacles (buildings, resources) are spawned.
-        """
-        print("  Baking FINAL navigation mesh (With Obstacles)...")
+	"""
+	CRITICAL FIX: This is the SECOND pass bake.
+	It bakes *after* all obstacles (buildings, resources) are spawned.
+	"""
+	print("  Baking FINAL navigation mesh (With Obstacles)...")
 
-        if navigation_region.navigation_mesh == null:
-                navigation_region.navigation_mesh = NavigationMesh.new()
+	if navigation_region.navigation_mesh == null:
+		navigation_region.navigation_mesh = NavigationMesh.new()
 
-        var nav_mesh = navigation_region.navigation_mesh
-        _setup_nav_mesh_parameters(nav_mesh) # Use the same settings
+	var nav_mesh = navigation_region.navigation_mesh
+	_setup_nav_mesh_parameters(nav_mesh) # Use the same settings
 
-        await get_tree().physics_frame
-        await get_tree().physics_frame
+	await get_tree().physics_frame
+	await get_tree().physics_frame
 
-        var source_geometry = NavigationMeshSourceGeometryData3D.new()
+	var source_geometry = NavigationMeshSourceGeometryData3D.new()
 
-        # 1. Add Terrain Geometry
-        if terrain_mesh_instance.mesh == null:
-                push_error("Cannot bake navmesh: terrain mesh is missing")
-                return
+	# 1. Add Terrain Geometry
+	if terrain_mesh_instance.mesh == null:
+		push_error("Cannot bake navmesh: terrain mesh is missing")
+		return
 
-        var terrain_mesh_faces = terrain_mesh_instance.mesh.get_faces()
-        if terrain_mesh_faces.is_empty():
-                push_error("Cannot bake navmesh: terrain mesh returned zero faces")
-                return
+	var terrain_mesh_faces = terrain_mesh_instance.mesh.get_faces()
+	if terrain_mesh_faces.is_empty():
+		push_error("Cannot bake navmesh: terrain mesh returned zero faces")
+		return
 
-        var terrain_transform = terrain_mesh_instance.global_transform
-        source_geometry.add_faces(terrain_mesh_faces, terrain_transform)
-        print("    Added terrain geometry...")
+	var terrain_transform = terrain_mesh_instance.global_transform
+	source_geometry.add_faces(terrain_mesh_faces, terrain_transform)
+	print("    Added terrain geometry...")
 
-        # 2. Add Building Geometry
-        for building in get_tree().get_nodes_in_group("buildings"):
-                if not is_instance_valid(building):
-                        continue
+	# 2. Add Building Geometry
+	for building in get_tree().get_nodes_in_group("buildings"):
+		if not is_instance_valid(building):
+			continue
 
-                # Assumes buildings have a MeshInstance3D child for their model
-                var mesh_instance = building.find_child("MeshInstance3D", true, false)
-                if mesh_instance and mesh_instance.mesh:
-                        source_geometry.add_mesh(mesh_instance.mesh, mesh_instance.global_transform)
-                        print("    Added building: ", building.name)
-                else:
-                        # Fallback: check for StaticBody3D with CollisionShape3D
-                        var static_body = building.find_child("StaticBody3D", true, false)
-                        if static_body:
-                                for child in static_body.get_children():
-                                        if child is CollisionShape3D and child.shape:
-                                                source_geometry.add_collision_shape(child.shape, child.global_transform)
-                                                print("    Added building collision: ", building.name)
+		# Assumes buildings have a MeshInstance3D child for their model
+		var mesh_instance = building.find_child("MeshInstance3D", true, false)
+		if mesh_instance and mesh_instance.mesh:
+			source_geometry.add_mesh(mesh_instance.mesh, mesh_instance.global_transform)
+			print("    Added building: ", building.name)
+		else:
+			# Fallback: check for StaticBody3D with CollisionShape3D
+			var static_body = building.find_child("StaticBody3D", true, false)
+			if static_body:
+				for child in static_body.get_children():
+					if child is CollisionShape3D and child.shape:
+						source_geometry.add_collision_shape(child.shape, child.global_transform)
+						print("    Added building collision: ", building.name)
 
-        # 3. Add Resource Geometry
-        for resource in get_tree().get_nodes_in_group("resources"):
-                if not is_instance_valid(resource):
-                        continue
+	# 3. Add Resource Geometry
+	for resource in get_tree().get_nodes_in_group("resources"):
+		if not is_instance_valid(resource):
+			continue
 
-                # Assumes resources have a MeshInstance3D for their model
-                var mesh_instance = resource.find_child("MeshInstance3D", true, false)
-                if mesh_instance and mesh_instance.mesh:
-                        source_geometry.add_mesh(mesh_instance.mesh, mesh_instance.global_transform)
-                        print("    Added resource: ", resource.name)
-                else:
-                        # Fallback: check for StaticBody3D with CollisionShape3D
-                        var static_body = resource.find_child("StaticBody3D", true, false)
-                        if static_body:
-                                for child in static_body.get_children():
-                                        if child is CollisionShape3D and child.shape:
-                                                source_geometry.add_collision_shape(child.shape, child.global_transform)
-                                                print("    Added resource collision: ", resource.name)
+		# Assumes resources have a MeshInstance3D for their model
+		var mesh_instance = resource.find_child("MeshInstance3D", true, false)
+		if mesh_instance and mesh_instance.mesh:
+			source_geometry.add_mesh(mesh_instance.mesh, mesh_instance.global_transform)
+			print("    Added resource: ", resource.name)
+		else:
+			# Fallback: check for StaticBody3D with CollisionShape3D
+			var static_body = resource.find_child("StaticBody3D", true, false)
+			if static_body:
+				for child in static_body.get_children():
+					if child is CollisionShape3D and child.shape:
+						source_geometry.add_collision_shape(child.shape, child.global_transform)
+						print("    Added resource collision: ", resource.name)
 
-        # 4. Bake!
-        await _bake_nav_mesh_from_source(nav_mesh, source_geometry)
+	# 4. Bake!
+	await _bake_nav_mesh_from_source(nav_mesh, source_geometry)
 func spawn_resource_nodes():
 	"""Spawn all resources - called from game.gd after buildings"""
 	if not multiplayer.is_server():
