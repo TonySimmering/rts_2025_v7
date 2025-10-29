@@ -12,18 +12,6 @@ agent_max_climb = 2.0
 script = ExtResource("1_hn2sr")
 max_height = 6.0
 min_height = -3.0
-use_procedural_textures = false
-use_texture_files = true
-grass_texture_path = "res://assets/textures/terrain/grass.png"
-dirt_texture_path = "res://assets/textures/terrain/dirt.png"
-rock_texture_path = "res://assets/textures/terrain/rock.png"
-snow_texture_path = "res://assets/textures/terrain/snow.png"
-grass_normal_path = "res://assets/textures/terrain/grass_normal.png"
-dirt_normal_path = "res://assets/textures/terrain/dirt_normal.png"
-rock_normal_path = "res://assets/textures/terrain/rock_normal.png"
-snow_normal_path = "res://assets/textures/terrain/snow_normal.png"
-texture_scale = 5.0
-terrain_roughness = 0.0
 
 [node name="NavigationRegion3D" type="NavigationRegion3D" parent="."]
 navigation_mesh = SubResource("NavigationMesh_hn2sr")

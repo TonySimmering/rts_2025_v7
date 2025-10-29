@@ -28,19 +28,19 @@ func _ready():
 	setup_selection_system()
 	setup_production_ui()
 	
-	# --- CRITICAL FIX: RE-ORDERED STARTUP (TWO-PASS BAKE) ---
+	# --- STARTUP SEQUENCE ---
 	
-	# 1. Generate terrain mesh (but DO NOT bake navmesh yet)
+	# 1. Generate terrain mesh
 	await generate_terrain_with_seed()
 	
-	# 2. Bake a BASE navmesh with *only* the terrain
+	# 2. Bake a BASE navmesh (terrain only) for spawning
 	if terrain.has_method("bake_base_terrain_navmesh"):
 		await terrain.bake_base_terrain_navmesh()
 	else:
 		push_error("Terrain script missing 'bake_base_terrain_navmesh'!")
 		return
 	
-	# 3. Setup spawn system (it can now use the base navmesh)
+	# 3. Setup spawn system
 	setup_spawn_system()
 	
 	# 4. Spawn buildings and units (server only)
@@ -49,12 +49,28 @@ func _ready():
 	# 5. Spawn resources (server only)
 	await spawn_resources_after_buildings()
 	
-	# 6. NOW, RE-BAKE the navmesh with all new obstacles included
+	# 6. Re-bake FINAL navmesh with obstacles
 	if terrain.has_method("bake_navigation_with_obstacles"):
 		await terrain.bake_navigation_with_obstacles()
 	else:
 		push_error("Terrain script missing 'bake_navigation_with_obstacles'!")
-	
+		# Don't return here, try to update units with the base map anyway
+		
+	# --- CRITICAL FIX: UPDATE UNIT NAV MAPS ---
+	await get_tree().physics_frame # Wait a frame for bake signal to propagate
+	var terrain_nav_region = terrain.get_node_or_null("NavigationRegion3D")
+	if terrain_nav_region:
+		var final_map_rid = terrain_nav_region.get_navigation_map()
+		if final_map_rid.is_valid():
+			print("Updating unit navigation maps with final RID...")
+			for unit in get_tree().get_nodes_in_group("units"):
+				if is_instance_valid(unit) and unit.has_method("update_navigation_map"):
+					unit.update_navigation_map(final_map_rid)
+			print("Unit map update complete.")
+		else:
+			push_error("Final navigation map RID is invalid after bake!")
+	else:
+		push_error("Could not find NavigationRegion3D for final map update!")
 	# --- END OF CRITICAL FIX ---
 	
 	NetworkManager.player_connected.connect(_on_player_joined)
@@ -109,11 +125,15 @@ func setup_production_ui():
 	$CanvasLayer.add_child(production_ui)
 	
 	# Connect to selection manager signals
-	if selection_manager:
+	# Check if selection_manager is valid before connecting
+	if is_instance_valid(selection_manager):
 		selection_manager.building_selected.connect(_on_building_selected)
 		selection_manager.building_deselected.connect(_on_building_deselected)
-	
+	else:
+		push_error("Selection Manager instance is invalid during Production UI setup!")
+
 	print("Production UI initialized")
+
 
 func _on_building_selected(building: Node):
 	"""Called when a building is selected"""
@@ -138,6 +158,11 @@ func spawn_town_centers_and_units():
 	if not multiplayer.is_server():
 		return
 	
+	# Check if spawn_manager is valid before proceeding
+	if not is_instance_valid(spawn_manager):
+		push_error("Spawn Manager is invalid, cannot spawn buildings or units!")
+		return
+		
 	await get_tree().create_timer(0.5).timeout
 	
 	# First spawn Town Centers
@@ -147,11 +172,14 @@ func spawn_town_centers_and_units():
 	await get_tree().create_timer(0.3).timeout
 	
 	# Then spawn workers around Town Centers
-	var map_size = Vector2(128, 128)
-	
+	var map_size = Vector2(128, 128) # Assuming terrain size, adjust if needed
+	if terrain and terrain.has_method("get_terrain_size"): # Example if terrain script has size info
+		map_size = Vector2(terrain.terrain_width, terrain.terrain_depth)
+		
 	for player_id in NetworkManager.players:
 		var spawn_center = spawn_manager.get_spawn_location_for_player(player_id, map_size)
 		spawn_manager.spawn_starting_units(player_id, spawn_center)
+
 
 func _on_selection_changed(selected_units: Array):
 	print("Selection changed: ", selected_units.size(), " units/buildings selected")
@@ -197,7 +225,7 @@ func update_info():
 	text += "Game Seed: " + str(NetworkManager.game_seed) + "\n"
 	text += "Players connected: " + str(NetworkManager.get_player_count()) + "\n"
 	
-	if selection_manager:
+	if is_instance_valid(selection_manager):
 		var selected = selection_manager.get_selected_units()
 		var selected_building = selection_manager.get_selected_building()
 		
@@ -214,7 +242,7 @@ func update_info():
 		elif selected.size() > 0:
 			text += "Selected units: " + str(selected.size()) + "\n"
 			
-			if is_instance_valid(selected[0]):
+			if selected.size() > 0 and is_instance_valid(selected[0]): # Check index bounds
 				var unit = selected[0]
 				
 				# Show carrying info for workers
@@ -242,4 +270,7 @@ func update_info():
 	text += "\nShift+Right Click: Queue command"
 	text += "\nESC: Return to menu"
 	
-	info_label.text = text
+	if is_instance_valid(info_label):
+		info_label.text = text
+	else:
+		push_error("InfoLabel is not valid in update_info!")

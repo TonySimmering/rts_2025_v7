@@ -594,3 +594,18 @@ func play_animation(anim_name: String):
 
 func get_owner_id() -> int:
 	return player_id
+
+# --- NEW FUNCTION ---
+func update_navigation_map(new_map_rid: RID):
+	"""
+	Called by game.gd after the final navmesh bake to ensure the agent
+	is using the latest navigation map.
+	"""
+	if is_instance_valid(navigation_agent):
+		if new_map_rid.is_valid():
+			navigation_agent.set_navigation_map(new_map_rid)
+			print("Updated navigation map for worker: ", name, " with RID: ", new_map_rid)
+		else:
+			push_error("Attempted to update navmap with invalid RID for worker: ", name)
+	else:
+		push_error("Cannot update navmap: NavigationAgent is invalid for worker: ", name)
