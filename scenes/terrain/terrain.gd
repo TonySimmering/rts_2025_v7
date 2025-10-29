@@ -76,45 +76,45 @@ func generate_heightmap():
 			heightmap[z][x] = height
 
 func create_mesh():
-	var surface_tool = SurfaceTool.new()
-	surface_tool.begin(Mesh.PRIMITIVE_TRIANGLES)
-	
-	# Build vertices
-	for z in terrain_depth:
-		for x in terrain_width:
-			var height = heightmap[z][x]
-			var vertex_pos = Vector3(
-				x * terrain_scale,
-				height,
-				z * terrain_scale
-			)
-			surface_tool.add_vertex(vertex_pos)
-			
-			# --- CRITICAL FIX: ADD UVS FOR TEXTURING ---
-			surface_tool.set_uv(Vector2(
-				(x * terrain_scale) / terrain_width, 
-				(z * terrain_scale) / terrain_depth
-			))
-	
-	# Build triangles
-	for z in terrain_depth - 1:
-		for x in terrain_width - 1:
-			var i = z * terrain_width + x
-			
-			surface_tool.add_index(i)
-			surface_tool.add_index(i + 1)
-			surface_tool.add_index(i + terrain_width)
-			
-			surface_tool.add_index(i + 1)
-			surface_tool.add_index(i + terrain_width + 1)
-			surface_tool.add_index(i + terrain_width)
-	
-	surface_tool.generate_normals()
-	
-	# --- CRITICAL FIX: ADD TANGENTS FOR NORMAL MAPPING ---
-	surface_tool.generate_tangents()
-	
-	terrain_mesh_instance.mesh = surface_tool.commit()
+        var surface_tool = SurfaceTool.new()
+        surface_tool.begin(Mesh.PRIMITIVE_TRIANGLES)
+        surface_tool.index()
+
+        # Build vertices
+        for z in terrain_depth:
+                for x in terrain_width:
+                        var height = heightmap[z][x]
+                        var vertex_pos = Vector3(
+                                x * terrain_scale,
+                                height,
+                                z * terrain_scale
+                        )
+                        # Set the UV before pushing the vertex so SurfaceTool applies it correctly.
+                        surface_tool.set_uv(Vector2(
+                                (x * terrain_scale) / terrain_width,
+                                (z * terrain_scale) / terrain_depth
+                        ))
+                        surface_tool.add_vertex(vertex_pos)
+
+        # Build triangles
+        for z in terrain_depth - 1:
+                for x in terrain_width - 1:
+                        var i = z * terrain_width + x
+
+                        surface_tool.add_index(i)
+                        surface_tool.add_index(i + 1)
+                        surface_tool.add_index(i + terrain_width)
+
+                        surface_tool.add_index(i + 1)
+                        surface_tool.add_index(i + terrain_width + 1)
+                        surface_tool.add_index(i + terrain_width)
+
+        surface_tool.generate_normals()
+
+        # --- CRITICAL FIX: ADD TANGENTS FOR NORMAL MAPPING ---
+        surface_tool.generate_tangents()
+
+        terrain_mesh_instance.mesh = surface_tool.commit()
 
 func create_collision():
 	var shape = ConcavePolygonShape3D.new()
