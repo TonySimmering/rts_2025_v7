@@ -10,7 +10,7 @@ extends CharacterBody3D
 @onready var model: Node3D = $Model
 
 # Movement
-@export var move_speed: float = 5.0
+@export var move_speed: float = 3
 @export var gravity: float = 20.0
 @export var stuck_check_interval: float = 2.0
 @export var stuck_distance_threshold: float = 1.0

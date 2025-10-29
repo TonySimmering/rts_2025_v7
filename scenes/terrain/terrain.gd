@@ -126,7 +126,7 @@ func create_mesh():
 				float(z) / float(terrain_depth - 1) * texture_scale
 			)
 			
-			# Calculate vertex color based on height and slope
+			# Calculate vertex color based on slope angle
 			var color = calculate_terrain_color(x, z, height)
 			
 			surface_tool.set_uv(uv)
@@ -155,41 +155,34 @@ func create_mesh():
 	apply_terrain_material()
 
 func calculate_terrain_color(x: int, z: int, height: float) -> Color:
-	"""Calculate blend weights for textures, stored in RGBA channels"""
+	"""Calculate blend weights for textures based ONLY on slope angle, stored in RGBA channels"""
 	
-	# Normalize height to 0-1 range
-	var height_factor = inverse_lerp(min_height, max_height, height)
-	
-	# Calculate slope (steepness)
+	# Calculate slope (steepness) in degrees
 	var slope = calculate_slope(x, z)
-	var slope_factor = clamp(slope / 45.0, 0.0, 1.0)  # 0-45 degrees normalized
 	
 	# Initialize blend weights (R=grass, G=dirt, B=rock, A=unused)
 	var grass_weight = 0.0
 	var dirt_weight = 0.0  # Reserved for player-flattened terrain
 	var rock_weight = 0.0
-	var snow_weight = 0.0  # Disabled, keeping for channel compatibility
+	var snow_weight = 0.0  # Unused
 	
-	# Calculate base weights by height (grass -> rock only, NO snow)
-	if height_factor < 0.35:
-		# Low areas - pure grass
+	# Blend based ONLY on slope angle:
+	# 0-15 degrees: pure grass (flat terrain)
+	# 15-35 degrees: blend grass to rock
+	# 35+ degrees: pure rock (steep cliffs)
+	
+	if slope < 15.0:
+		# Flat terrain - pure grass
 		grass_weight = 1.0
-	else:
-		# Mid to high areas - blend grass to rock
-		var blend = inverse_lerp(0.35, 0.75, height_factor)
-		blend = pow(blend, height_blend_sharpness)
+	elif slope < 35.0:
+		# Moderate slopes - blend from grass to rock
+		var blend = inverse_lerp(15.0, 35.0, slope)
+		blend = pow(blend, height_blend_sharpness)  # Use existing sharpness parameter
 		grass_weight = 1.0 - blend
 		rock_weight = blend
-	
-	# Apply slope influence (steep slopes = more rocky)
-	if slope_factor > 0.4:
-		var slope_blend = inverse_lerp(0.4, 0.8, slope_factor) * slope_influence
-		
-		# Redistribute weights to favor rock (dirt and snow stay at 0)
-		if grass_weight > 0.0:
-			var scale = (1.0 - slope_blend)
-			grass_weight *= scale
-		rock_weight = lerp(rock_weight, 1.0, slope_blend)
+	else:
+		# Steep slopes - pure rock
+		rock_weight = 1.0
 	
 	# Normalize weights to sum to 1.0
 	var total = grass_weight + dirt_weight + rock_weight + snow_weight
@@ -223,6 +216,125 @@ func calculate_slope(x: int, z: int) -> float:
 	# Calculate slope angle
 	var slope_radians = atan(sqrt(dx * dx + dz * dz))
 	return rad_to_deg(slope_radians)
+
+func flatten_terrain_at_position(world_pos: Vector3, radius: float = 10.0, blend_padding: float = 3.0):
+	"""Flatten terrain and set to dirt texture at the given world position with smooth blending"""
+	print("Flattening terrain at ", world_pos, " with radius ", radius)
+	
+	# Convert world position to grid coordinates
+	var grid_x = int(world_pos.x / terrain_scale)
+	var grid_z = int(world_pos.z / terrain_scale)
+	
+	# Sample the target height at the center
+	if grid_x < 0 or grid_x >= terrain_width or grid_z < 0 or grid_z >= terrain_depth:
+		push_warning("Flatten position out of terrain bounds")
+		return
+	
+	var target_height = heightmap[grid_z][grid_x]
+	
+	# Calculate affected area with blend padding
+	var total_radius = radius + blend_padding
+	var grid_radius = int(total_radius / terrain_scale) + 1
+	
+	# Flatten the heightmap
+	for z in range(terrain_depth):
+		for x in range(terrain_width):
+			var world_vertex = Vector3(x * terrain_scale, 0, z * terrain_scale)
+			var distance = Vector2(world_vertex.x, world_vertex.z).distance_to(Vector2(world_pos.x, world_pos.z))
+			
+			if distance < radius:
+				# Fully flatten
+				heightmap[z][x] = target_height
+			elif distance < total_radius:
+				# Blend zone
+				var blend_factor = (distance - radius) / blend_padding
+				blend_factor = smoothstep(0.0, 1.0, blend_factor)  # Smooth interpolation
+				heightmap[z][x] = lerp(target_height, heightmap[z][x], blend_factor)
+	
+	# Rebuild mesh with new heights and textures
+	var surface_tool = SurfaceTool.new()
+	surface_tool.begin(Mesh.PRIMITIVE_TRIANGLES)
+	
+	# Rebuild vertices
+	for z in terrain_depth:
+		for x in terrain_width:
+			var height = heightmap[z][x]
+			var vertex_pos = Vector3(
+				x * terrain_scale,
+				height,
+				z * terrain_scale
+			)
+			
+			var uv = Vector2(
+				float(x) / float(terrain_width - 1) * texture_scale,
+				float(z) / float(terrain_depth - 1) * texture_scale
+			)
+			
+			# Calculate distance to flattened center
+			var world_vertex = Vector3(x * terrain_scale, 0, z * terrain_scale)
+			var distance = Vector2(world_vertex.x, world_vertex.z).distance_to(Vector2(world_pos.x, world_pos.z))
+			
+			var color: Color
+			
+			if distance < radius:
+				# Pure dirt in flattened area
+				color = Color(0.0, 1.0, 0.0, 0.0)  # G=dirt
+			elif distance < total_radius:
+				# Blend dirt to normal terrain texture
+				var blend_factor = (distance - radius) / blend_padding
+				blend_factor = smoothstep(0.0, 1.0, blend_factor)
+				
+				var normal_color = calculate_terrain_color(x, z, height)
+				var dirt_color_pure = Color(0.0, 1.0, 0.0, 0.0)
+				
+				color = lerp(dirt_color_pure, normal_color, blend_factor)
+			else:
+				# Normal terrain texture
+				color = calculate_terrain_color(x, z, height)
+			
+			surface_tool.set_uv(uv)
+			surface_tool.set_color(color)
+			surface_tool.add_vertex(vertex_pos)
+	
+	# Rebuild triangles
+	for z in terrain_depth - 1:
+		for x in terrain_width - 1:
+			var i = z * terrain_width + x
+			
+			surface_tool.add_index(i)
+			surface_tool.add_index(i + 1)
+			surface_tool.add_index(i + terrain_width)
+			
+			surface_tool.add_index(i + 1)
+			surface_tool.add_index(i + terrain_width + 1)
+			surface_tool.add_index(i + terrain_width)
+	
+	surface_tool.generate_normals()
+	
+	var mesh = surface_tool.commit()
+	terrain_mesh_instance.mesh = mesh
+	
+	# Reapply material
+	apply_terrain_material()
+	
+	# Recreate collision
+	create_collision()
+	
+	# Rebake navigation
+	await bake_navigation()
+	
+	print("Terrain flattened and rebaked successfully!")
+
+func get_height_at_position(world_pos: Vector3) -> float:
+	"""Get terrain height at a world position"""
+	var grid_x = int(world_pos.x / terrain_scale)
+	var grid_z = int(world_pos.z / terrain_scale)
+	
+	# Clamp to valid range
+	grid_x = clampi(grid_x, 0, terrain_width - 1)
+	grid_z = clampi(grid_z, 0, terrain_depth - 1)
+	
+	return heightmap[grid_z][grid_x]
 
 func apply_terrain_material():
 	if use_texture_files:
@@ -497,48 +609,20 @@ func spawn_resource(resource_type: int, index: int):
 		var random_x = randf_range(10, terrain_width - 10)
 		var random_z = randf_range(10, terrain_depth - 10)
 		
-		var terrain_height = get_height_at_position(Vector3(random_x, 0, random_z))
-		var test_pos = Vector3(random_x, terrain_height, random_z)
+		var world_pos = Vector3(random_x, 0, random_z)
+		var height = get_height_at_position(world_pos)
+		world_pos.y = height
 		
-		var too_close = false
-		for existing in get_tree().get_nodes_in_group("resource_nodes"):
-			if existing.global_position.distance_to(test_pos) < 8.0:
-				too_close = true
-				break
-		
-		if too_close:
-			continue
-		
-		spawn_resource_rpc.rpc(resource_type, test_pos, index)
+		spawn_resource_rpc.rpc(resource_type, world_pos, index)
 		return
 	
-	var fallback_x = randf_range(20, terrain_width - 20)
-	var fallback_z = randf_range(20, terrain_depth - 20)
-	var fallback_height = get_height_at_position(Vector3(fallback_x, 0, fallback_z))
-	var fallback_pos = Vector3(fallback_x, fallback_height, fallback_z)
-	spawn_resource_rpc.rpc(resource_type, fallback_pos, index)
+	push_warning("Failed to spawn resource after ", max_attempts, " attempts")
 
 @rpc("authority", "call_local", "reliable")
 func spawn_resource_rpc(resource_type: int, position: Vector3, index: int):
-	"""Spawn resource on all clients"""
+	"""Spawn a resource node on all clients"""
 	var resource_node = RESOURCE_NODE_SCENE.instantiate()
-	
-	resource_node.resource_type = resource_type
 	resource_node.global_position = position
+	resource_node.resource_type = resource_type
 	resource_node.name = "Resource_%d_%d" % [resource_type, index]
-	
-	navigation_region.add_child(resource_node)
-	
-	if resource_type == 1 and index % 10 == 0:
-		print("    Tree batch spawned: ", index, " at ", position)
-
-func get_height_at_position(world_pos: Vector3) -> float:
-	var local_x = int(world_pos.x / terrain_scale)
-	var local_z = int(world_pos.z / terrain_scale)
-	
-	local_x = clamp(local_x, 0, terrain_width - 1)
-	local_z = clamp(local_z, 0, terrain_depth - 1)
-	
-	if local_z < heightmap.size() and local_x < heightmap[local_z].size():
-		return heightmap[local_z][local_x]
-	return 0.0
+	add_child(resource_node)
