@@ -3,11 +3,13 @@ extends Node3D
 @onready var info_label = $CanvasLayer/InfoLabel
 
 const CAMERA_RIG_SCENE = preload("res://scenes/camera/camera_rig.tscn")
+const PRODUCTION_UI_SCENE = preload("res://scripts/ui/production_ui.tscn")
 
 var local_camera: Node3D = null
 var selection_manager: Node = null
 var selection_box: Control = null
 var spawn_manager: Node = null
+var production_ui: Control = null
 
 func _ready():
 	print("=== GAME SCENE LOADED ===")
@@ -18,6 +20,7 @@ func _ready():
 	
 	spawn_local_camera()
 	setup_selection_system()
+	setup_production_ui()
 	await generate_terrain_with_seed()
 	setup_spawn_system()
 	spawn_town_centers_and_units()
@@ -61,6 +64,28 @@ func setup_selection_system():
 	selection_manager.selection_changed.connect(_on_selection_changed)
 	
 	print("Selection system initialized")
+
+func setup_production_ui():
+	"""Setup production UI and connect to selection manager"""
+	production_ui = PRODUCTION_UI_SCENE.instantiate()
+	$CanvasLayer.add_child(production_ui)
+	
+	# Connect to selection manager signals
+	if selection_manager:
+		selection_manager.building_selected.connect(_on_building_selected)
+		selection_manager.building_deselected.connect(_on_building_deselected)
+	
+	print("Production UI initialized")
+
+func _on_building_selected(building: Node):
+	"""Called when a building is selected"""
+	if production_ui:
+		production_ui.show_building(building)
+
+func _on_building_deselected():
+	"""Called when building selection is cleared"""
+	if production_ui:
+		production_ui.hide_ui()
 
 func setup_spawn_system():
 	spawn_manager = Node.new()
@@ -140,30 +165,35 @@ func update_info():
 	
 	if selection_manager:
 		var selected = selection_manager.get_selected_units()
-		text += "Selected units: " + str(selected.size()) + "\n"
+		var selected_building = selection_manager.get_selected_building()
 		
-		if selected.size() > 0 and is_instance_valid(selected[0]):
-			var unit = selected[0]
-			
-			# Show carrying info for workers
-			if unit.has_method("get_carried_amount"):
-				var carried = unit.get_carried_amount()
-				if carried > 0:
-					text += "💼 Carrying: " + str(carried) + " resources\n"
-			
-			# Show command queue
-			if unit.has_method("get_command_queue_size"):
-				var queue_size = unit.get_command_queue_size()
-				if queue_size > 0:
-					text += "📋 Queued commands: " + str(queue_size) + "\n"
+		if selected_building and is_instance_valid(selected_building):
+			text += "Selected: " + selected_building.building_name + "\n"
 			
 			# Show production info for buildings
-			if unit.has_method("get_queue_size"):
-				var prod_queue = unit.get_queue_size()
+			if selected_building.has_method("get_queue_size"):
+				var prod_queue = selected_building.get_queue_size()
 				if prod_queue > 0:
 					text += "🏭 Production queue: " + str(prod_queue) + "\n"
-					var progress = unit.get_production_progress()
+					var progress = selected_building.get_production_progress()
 					text += "   Progress: " + str(int(progress * 100)) + "%\n"
+		elif selected.size() > 0:
+			text += "Selected units: " + str(selected.size()) + "\n"
+			
+			if is_instance_valid(selected[0]):
+				var unit = selected[0]
+				
+				# Show carrying info for workers
+				if unit.has_method("get_carried_amount"):
+					var carried = unit.get_carried_amount()
+					if carried > 0:
+						text += "💼 Carrying: " + str(carried) + " resources\n"
+				
+				# Show command queue
+				if unit.has_method("get_command_queue_size"):
+					var queue_size = unit.get_command_queue_size()
+					if queue_size > 0:
+						text += "📋 Queued commands: " + str(queue_size) + "\n"
 	
 	text += "\nPlayer List:\n"
 	for peer_id in NetworkManager.players:
@@ -173,8 +203,8 @@ func update_info():
 	text += "\nControls:"
 	text += "\nWASD/Arrows: Pan | Q/E: Rotate | Scroll: Zoom"
 	text += "\nLeft Click: Select | Shift+Click: Add | Drag: Box select"
-	text += "\nRight Click: Move | Right Click Resource: Gather"
-	text += "\nRight Click Building: Train unit (if Town Center selected)"
+	text += "\nRight Click: Move (units only) | Right Click Resource: Gather"
+	text += "\nSelect Town Center → Use UI to train workers"
 	text += "\nShift+Right Click: Queue command"
 	text += "\nESC: Return to menu"
 	

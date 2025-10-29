@@ -2,9 +2,12 @@ extends Node
 
 signal selection_changed(selected_units: Array)
 signal move_command_issued(target_position: Vector3, units: Array)
+signal building_selected(building: Node)
+signal building_deselected()
 
 # Selection state
-var selected_units: Array = []
+var selected_units: Array = []  # Units only (movable)
+var selected_building: Node = null  # Single building selection
 
 # Box selection
 var is_box_selecting: bool = false
@@ -48,7 +51,7 @@ func _input(event):
 		else:
 			_on_left_mouse_up(event.position)
 	
-	# Right mouse button - movement command with rotation
+	# Right mouse button - movement command with rotation (only for units)
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_RIGHT:
 		if event.pressed and selected_units.size() > 0:
 			_on_right_mouse_down(event.position)
@@ -83,6 +86,15 @@ func _on_left_mouse_up(mouse_pos: Vector2):
 	is_box_selecting = false
 
 func _on_right_mouse_down(mouse_pos: Vector2):
+	# Don't issue commands if a building is selected
+	if selected_building:
+		print("Cannot issue movement commands to buildings")
+		return
+	
+	# Only issue commands if units are selected
+	if selected_units.size() == 0:
+		return
+	
 	# Raycast to find target position or resource
 	var from = camera.project_ray_origin(mouse_pos)
 	var to = from + camera.project_ray_normal(mouse_pos) * 1000.0
@@ -102,7 +114,7 @@ func _on_right_mouse_down(mouse_pos: Vector2):
 			_issue_gather_command(clicked_object)
 			return
 		
-		# Otherwise, it's a move command
+		# Otherwise, it's a move command (only for units)
 		formation_center = result.position
 		rotation_start_pos = mouse_pos
 		is_rotating_formation = true
@@ -205,13 +217,30 @@ func _handle_single_select(mouse_pos: Vector2):
 	
 	if result:
 		var clicked_object = result.collider
-		var unit = _find_unit_from_collider(clicked_object)
+		var entity = _find_unit_or_building_from_collider(clicked_object)
 		
-		if unit:
-			if not selected_units.has(unit):
-				selected_units.append(unit)
-				unit.select()
-				selection_changed.emit(selected_units)
+		if entity:
+			# Check if it's a building
+			if entity.is_in_group("buildings"):
+				# Clear unit selection, select building
+				clear_selection()
+				selected_building = entity
+				entity.select()
+				building_selected.emit(entity)
+				print("Building selected: ", entity.building_name)
+			# Check if it's a unit
+			elif entity.is_in_group("units"):
+				# Clear building selection, add to unit selection
+				if selected_building:
+					if is_instance_valid(selected_building):
+						selected_building.deselect()
+					selected_building = null
+					building_deselected.emit()
+				
+				if not selected_units.has(entity):
+					selected_units.append(entity)
+					entity.select()
+					selection_changed.emit(selected_units)
 		else:
 			clear_selection()
 
@@ -241,7 +270,7 @@ func _get_box_rect() -> Rect2:
 	)
 	return Rect2(box_min, box_max - box_min)
 
-func _find_unit_from_collider(collider: Node) -> Node:
+func _find_unit_or_building_from_collider(collider: Node) -> Node:
 	var current = collider
 	while current:
 		# Check for units
@@ -254,11 +283,22 @@ func _find_unit_from_collider(collider: Node) -> Node:
 	return null
 
 func clear_selection():
+	# Clear units
 	for unit in selected_units:
 		if is_instance_valid(unit):
 			unit.deselect()
 	selected_units.clear()
 	selection_changed.emit(selected_units)
+	
+	# Clear building
+	if selected_building:
+		if is_instance_valid(selected_building):
+			selected_building.deselect()
+		selected_building = null
+		building_deselected.emit()
 
 func get_selected_units() -> Array:
 	return selected_units
+
+func get_selected_building() -> Node:
+	return selected_building
