@@ -528,10 +528,6 @@ func spawn_forests():
 			var center_z = randf_range(forest_radius + 10, terrain_depth - forest_radius - 10)
 			
 			forest_center = Vector3(center_x, 0, center_z)
-			
-			if is_too_close_to_town_centers(forest_center, town_centers):
-				attempts += 1
-				continue
 				
 			var too_close = false
 			for existing_center in forest_centers:
@@ -581,10 +577,6 @@ func spawn_forests():
 				var tree_y = get_height_at_position(Vector3(tree_x, 0, tree_z))
 				var tree_pos = Vector3(tree_x, tree_y, tree_z)
 				
-				if is_too_close_to_town_centers(tree_pos, town_centers):
-					attempts += 1
-					continue
-				
 				var too_close = false
 				for existing_tree in trees_in_forest:
 					if tree_pos.distance_to(existing_tree) < tree_spacing_min:
@@ -618,13 +610,6 @@ func get_town_center_positions() -> Array[Vector3]:
 			positions.append(building.global_position)
 	
 	return positions
-
-func is_too_close_to_town_centers(position: Vector3, town_centers: Array[Vector3]) -> bool:
-	"""Check if position is too close to any Town Center"""
-	for tc_pos in town_centers:
-		if position.distance_to(tc_pos) < MIN_DISTANCE_FROM_TOWN_CENTER:
-			return true
-	return false
 
 func spawn_resource(resource_type: int, index: int):
 	"""Spawn a single resource node (gold/stone)"""
