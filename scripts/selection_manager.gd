@@ -35,7 +35,9 @@ func _ready():
 func set_camera(cam: Camera3D):
 	camera = cam
 
-func _input(event):
+# CRITICAL FIX: Changed from _input to _unhandled_input
+# This ensures UI clicks are handled first and won't trigger world selection
+func _unhandled_input(event):
 	if not camera:
 		return
 	
@@ -43,6 +45,7 @@ func _input(event):
 	if event is InputEventKey and event.pressed and event.keycode == KEY_F:
 		use_flow_field = not use_flow_field
 		print("Flow field mode: ", "ENABLED" if use_flow_field else "DISABLED")
+		get_viewport().set_input_as_handled()
 	
 	# Left mouse button - selection
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
@@ -50,6 +53,7 @@ func _input(event):
 			_on_left_mouse_down(event.position)
 		else:
 			_on_left_mouse_up(event.position)
+		get_viewport().set_input_as_handled()
 	
 	# Right mouse button - movement command with rotation (only for units)
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_RIGHT:
@@ -57,6 +61,7 @@ func _input(event):
 			_on_right_mouse_down(event.position)
 		else:
 			_on_right_mouse_up()
+		get_viewport().set_input_as_handled()
 	
 	# Mouse motion for box select and formation rotation
 	if event is InputEventMouseMotion:
@@ -125,31 +130,37 @@ func _issue_gather_command(resource_node: Node):
 	var queue_mode = Input.is_key_pressed(KEY_SHIFT)
 	var resource_type = resource_node.get_resource_type_string()
 	
-	print("Gather command: ", selected_units.size(), " units → ", resource_type, " resource", " [QUEUED]" if queue_mode else "")
+	print("Gather command: ", selected_units.size(), " units → ", resource_type, " node")
 	
 	for unit in selected_units:
 		if is_instance_valid(unit) and unit.is_multiplayer_authority():
-			var command = UnitCommand.new(UnitCommand.CommandType.GATHER)
-			command.target_position = resource_node.global_position
-			command.target_entity = resource_node
+			# Check if unit can gather
+			if not unit.has_method("can_gather"):
+				continue
 			
+			var command = UnitCommand.new(UnitCommand.CommandType.GATHER)
+			command.target_resource = resource_node
+			command.resource_type = resource_type
+			
+			# Queue or replace based on shift key
 			unit.queue_command(command, queue_mode)
 
 func _on_right_mouse_up():
-	if not is_rotating_formation:
-		return
+	if is_rotating_formation and selected_units.size() > 0:
+		# Issue move command with formation
+		_issue_formation_move_command()
 	
 	is_rotating_formation = false
-	
-	# Check if shift is held (queue mode)
+	formation_rotation = 0.0
+
+func _issue_formation_move_command():
 	var queue_mode = Input.is_key_pressed(KEY_SHIFT)
 	
 	# Calculate facing angle
 	var facing_angle = formation_rotation
 	
 	# If no rotation was applied, calculate direction from units to target
-	var drag_distance = get_viewport().get_mouse_position().distance_to(rotation_start_pos)
-	if drag_distance < ROTATION_DRAG_THRESHOLD:
+	if abs(formation_rotation) < 0.01:
 		var avg_position = Vector3.ZERO
 		var valid_count = 0
 		for unit in selected_units:
@@ -162,7 +173,7 @@ func _on_right_mouse_up():
 			var direction = (formation_center - avg_position).normalized()
 			facing_angle = atan2(direction.x, direction.z)
 	
-	# Issue move command with formation
+	# Get formation positions with facing angle
 	var formation_positions = FormationManager.calculate_formation_positions(
 		formation_center,
 		selected_units.size(),
@@ -170,15 +181,16 @@ func _on_right_mouse_up():
 		facing_angle
 	)
 	
-	# Validate each position against NavMesh
+	# Validate positions against NavMesh
 	var nav_map = get_tree().root.get_world_3d().navigation_map
 	for i in range(formation_positions.size()):
 		var original_pos = formation_positions[i]
 		var valid_pos = NavigationServer3D.map_get_closest_point(nav_map, original_pos)
 		formation_positions[i] = valid_pos
 	
-	var queue_text = " [QUEUED]" if queue_mode else ""
-	print("Move command to: ", formation_center, " with angle: ", rad_to_deg(facing_angle), " degrees", queue_text)
+	# Debug
+	var queue_text = "QUEUED" if queue_mode else "NEW"
+	print("Move command (", queue_text, "): ", selected_units.size(), " units")
 	
 	# Create move commands for each unit
 	for i in range(selected_units.size()):
