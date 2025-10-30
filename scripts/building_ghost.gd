@@ -179,7 +179,7 @@ func check_for_snapping(player_id: int) -> bool:
 	# Find the nearest corner-to-corner snap position
 	var best_snap_data = find_nearest_corner_snap(all_targets)
 
-	if best_snap_data != null:
+	if not best_snap_data.is_empty():
 		snap_position = best_snap_data.position
 		is_snapping = true
 		return true
@@ -257,7 +257,7 @@ func find_nearest_corner_snap(targets: Array) -> Dictionary:
 	if best_snap_position != null:
 		return {"position": best_snap_position, "distance": best_snap_distance}
 	else:
-		return null
+		return {}  # Return empty dictionary instead of null
 
 func apply_snapping():
 	"""Apply snapped position to ghost"""
