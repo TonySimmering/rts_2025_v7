@@ -161,23 +161,20 @@ func place_building():
 
 	var placement_data = current_ghost.get_placement_data()
 
-	# Check resources again (in case they changed)
+	# Check resources locally (for immediate feedback)
 	if not can_afford_building(placement_data.building_type):
 		print("Cannot afford building: ", placement_data.building_type)
 		return
 
-	# Spend resources on server
-	if multiplayer.is_server():
-		var cost = BUILDING_COSTS[placement_data.building_type]
-		if not ResourceManager.spend_resources(player_id, cost):
-			print("Failed to spend resources for building")
-			return
-
-	# Create construction site
-	create_construction_site(placement_data)
-
-	# Issue build commands to workers
+	# Issue build commands to workers (local, they'll execute when site exists)
 	issue_build_commands(placement_data)
+
+	# Request construction site creation from server
+	if not multiplayer.is_server():
+		request_place_building_rpc.rpc_id(1, placement_data, player_id)
+	else:
+		# Server creates directly
+		server_create_construction_site(placement_data, player_id)
 
 	# Emit signal
 	building_placed.emit(placement_data.position, placement_data.rotation, placement_data.building_type)
@@ -188,13 +185,30 @@ func place_building():
 
 	print("Building placed: ", placement_data.building_type, " at ", placement_data.position)
 
-func create_construction_site(placement_data: Dictionary):
-	"""Create a construction site at the placement position"""
+@rpc("any_peer", "call_remote", "reliable")
+func request_place_building_rpc(placement_data: Dictionary, requester_player_id: int):
+	"""Client requests server to create construction site"""
 	if not multiplayer.is_server():
-		# Send RPC to server to create construction site
-		create_construction_site_rpc.rpc_id(1, placement_data)
 		return
 
+	server_create_construction_site(placement_data, requester_player_id)
+
+func server_create_construction_site(placement_data: Dictionary, owner_player_id: int):
+	"""Server-side construction site creation with resource validation"""
+	if not multiplayer.is_server():
+		return
+
+	# Validate and spend resources on server
+	var cost = BUILDING_COSTS[placement_data.building_type]
+	if not ResourceManager.spend_resources(owner_player_id, cost):
+		print("Server: Cannot afford building for player ", owner_player_id)
+		return
+
+	# Create construction site
+	create_construction_site_internal(placement_data, owner_player_id)
+
+func create_construction_site_internal(placement_data: Dictionary, owner_player_id: int):
+	"""Internal function to create construction site (server only)"""
 	# Flatten terrain at building position
 	if terrain:
 		var flatten_radius = placement_data.size.x / 2.0 + 1.0
@@ -218,7 +232,7 @@ func create_construction_site(placement_data: Dictionary):
 	site.add_child(nav_obstacle)
 
 	# Setup construction site properties
-	site.player_id = player_id
+	site.player_id = owner_player_id
 	site.site_id = generate_site_id()
 	site.building_type = placement_data.building_type
 	site.building_size = placement_data.size
@@ -226,19 +240,14 @@ func create_construction_site(placement_data: Dictionary):
 	site.construction_time = CONSTRUCTION_TIMES[placement_data.building_type]
 	site.construction_cost = BUILDING_COSTS[placement_data.building_type]
 
-	# Set position and rotation
+	# Add to game world FIRST
+	get_tree().root.get_node("Game").add_child(site, true)
+
+	# THEN set position and rotation (after adding to tree)
 	site.global_position = placement_data.position
 	site.global_rotation.y = placement_data.rotation
 
-	# Add to game world
-	get_tree().root.get_node("Game").add_child(site, true)
-
-	print("Construction site created at ", placement_data.position)
-
-@rpc("any_peer", "call_local", "reliable")
-func create_construction_site_rpc(placement_data: Dictionary):
-	"""RPC to create construction site on server"""
-	create_construction_site(placement_data)
+	print("Construction site created at ", placement_data.position, " for player ", owner_player_id)
 
 func issue_build_commands(placement_data: Dictionary):
 	"""Issue build commands to selected workers"""
