@@ -34,7 +34,7 @@ var stuck_timer: float = 0.0
 var check_timer: float = 0.0
 
 # State
-enum UnitState { IDLE, MOVING, GATHERING, RETURNING, DEPOSITING }
+enum UnitState { IDLE, MOVING, GATHERING, RETURNING, DEPOSITING, BUILDING }
 var state: UnitState = UnitState.IDLE
 
 # Gathering
@@ -50,8 +50,13 @@ var current_dropoff: Node = null  # Town Center reference
 const DROPOFF_SEARCH_INTERVAL: float = 5.0
 var dropoff_search_timer: float = 0.0
 
+# Building/Construction
+var target_construction_site: Node = null
+const BUILD_RANGE: float = 5.0
+
 func _ready():
 	add_to_group("units")
+	add_to_group("worker")
 	add_to_group("player_%d_units" % player_id)
 	
 	set_multiplayer_authority(player_id)
@@ -125,6 +130,8 @@ func _physics_process(delta):
 			process_returning(delta)
 		UnitState.DEPOSITING:
 			process_depositing(delta)
+		UnitState.BUILDING:
+			process_building(delta)
 		UnitState.IDLE:
 			move_and_slide()
 			if animation_player and current_animation != "Idle":
@@ -178,7 +185,7 @@ func find_nearest_dropoff():
 func process_movement(delta):
 	if navigation_agent.is_navigation_finished():
 		print("Navigation finished!")
-		
+
 		# Check if we reached a resource for gathering
 		if current_command and current_command.type == UnitCommand.CommandType.GATHER:
 			if target_resource and is_instance_valid(target_resource):
@@ -190,11 +197,22 @@ func process_movement(delta):
 					target_resource.start_gathering(self)
 					play_animation("Idle")
 					return
-		
+
+		# Check if we reached a construction site for building
+		if current_command and current_command.type == UnitCommand.CommandType.BUILD:
+			if target_construction_site and is_instance_valid(target_construction_site):
+				var distance = global_position.distance_to(target_construction_site.global_position)
+				if distance <= BUILD_RANGE:
+					print("Reached construction site, starting building")
+					state = UnitState.BUILDING
+					velocity = Vector3.ZERO
+					play_animation("Idle")
+					return
+
 		state = UnitState.IDLE
 		velocity.x = 0
 		velocity.z = 0
-		
+
 		if has_facing_target:
 			rotation.y = target_facing_angle
 			has_facing_target = false
@@ -409,8 +427,7 @@ func _execute_command(command: UnitCommand):
 		UnitCommand.CommandType.GATHER:
 			_execute_gather_command(command)
 		UnitCommand.CommandType.BUILD:
-			print("Build command not yet implemented")
-			current_command = null
+			_execute_build_command(command)
 		UnitCommand.CommandType.ATTACK:
 			print("Attack command not yet implemented")
 			current_command = null
@@ -492,6 +509,89 @@ func _find_resource_at_position(pos: Vector3) -> Node:
 	
 	return closest
 
+func _execute_build_command(command: UnitCommand):
+	"""Execute build command - move to construction site and build"""
+	var construction_sites = get_tree().get_nodes_in_group("construction_sites")
+	var target_site: Node = null
+	var closest_dist = 10.0  # Max search radius
+
+	# Find construction site near target position
+	for site in construction_sites:
+		if not is_instance_valid(site):
+			continue
+
+		# Check if site is for the right building type and player
+		if site.building_type != command.building_type:
+			continue
+
+		if site.player_id != player_id:
+			continue
+
+		var dist = site.global_position.distance_to(command.target_position)
+		if dist < closest_dist:
+			closest_dist = dist
+			target_site = site
+
+	if not target_site:
+		print("✗ No construction site found for ", command.building_type, " at ", command.target_position)
+		current_command = null
+		return
+
+	target_construction_site = target_site
+	print("✓ Moving to build ", command.building_type)
+
+	# Move to construction site
+	navigation_agent.target_position = target_site.global_position
+	state = UnitState.MOVING
+
+func process_building(delta):
+	"""Handle building/construction"""
+	if not target_construction_site or not is_instance_valid(target_construction_site):
+		print("⚠ Construction site lost!")
+		state = UnitState.IDLE
+		current_command = null
+		target_construction_site = null
+		return
+
+	# Check if in build range
+	var distance = global_position.distance_to(target_construction_site.global_position)
+	if distance > BUILD_RANGE:
+		# Move closer
+		navigation_agent.target_position = target_construction_site.global_position
+		state = UnitState.MOVING
+		return
+
+	# Face the construction site
+	var direction = (target_construction_site.global_position - global_position).normalized()
+	if direction.length() > 0.01:
+		var target_rotation = atan2(direction.x, direction.z)
+		rotation.y = lerp_angle(rotation.y, target_rotation, delta * 5.0)
+
+	# Add self to construction site builders (server only)
+	if multiplayer.is_server():
+		if target_construction_site.has_method("add_builder"):
+			target_construction_site.add_builder(self)
+
+		# Check if construction is complete
+		if target_construction_site.get_progress_percent() >= 1.0:
+			print("Construction complete!")
+			construction_complete()
+
+	# Play idle animation while building
+	if animation_player and current_animation != "Idle":
+		play_animation("Idle")
+
+func construction_complete():
+	"""Called when construction is complete"""
+	if target_construction_site and is_instance_valid(target_construction_site):
+		if target_construction_site.has_method("remove_builder"):
+			target_construction_site.remove_builder(self)
+
+	target_construction_site = null
+	state = UnitState.IDLE
+	current_command = null
+	print("Worker finished construction")
+
 func resource_depleted():
 	if state == UnitState.GATHERING:
 		print("Resource depleted while gathering")
@@ -548,6 +648,7 @@ func get_state_name() -> String:
 		UnitState.GATHERING: return "Gathering"
 		UnitState.RETURNING: return "Returning"
 		UnitState.DEPOSITING: return "Depositing"
+		UnitState.BUILDING: return "Building"
 	return "Unknown"
 
 func get_carried_amount() -> int:

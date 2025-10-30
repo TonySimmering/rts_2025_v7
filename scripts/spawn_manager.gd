@@ -86,13 +86,17 @@ func spawn_unit_networked(player_id: int, unit_id: int, spawn_pos: Vector3):
 	worker.player_id = player_id
 	worker.unit_id = unit_id
 	worker.name = "Unit_P%d_U%d" % [player_id, unit_id]
-	
+
 	get_tree().root.get_node("Game").add_child(worker)
-	
+
 	if not spawned_units.has(player_id):
 		spawned_units[player_id] = []
 	spawned_units[player_id].append(worker)
-	
+
+	# Add to population used (server only to avoid double-counting)
+	if multiplayer.is_server():
+		ResourceManager.add_population_used(player_id, 1)
+
 	print("  Spawned worker ", unit_id, " for player ", player_id, " at ", spawn_pos)
 
 func get_spawn_location_for_player(player_id: int, map_size: Vector2) -> Vector3:
