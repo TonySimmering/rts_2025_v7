@@ -99,11 +99,13 @@ func setup_navigation_obstacle():
 		nav_obstacle.height = 1.0
 		nav_obstacle.position.y = 0.5  # Center of box
 	
-	# Enable avoidance so units path around it
-	nav_obstacle.avoidance_enabled = true
-	nav_obstacle.use_3d_avoidance = true
-	
-	print("  Nav obstacle configured for ", TYPE_NAMES[resource_type], " - radius: ", nav_obstacle.radius, ", height: ", nav_obstacle.height)
+	# Disable dynamic avoidance for static resources
+	# Resources should rely on physical collision only
+	# NavigationObstacle3D avoidance is for moving obstacles
+	nav_obstacle.avoidance_enabled = false
+	nav_obstacle.use_3d_avoidance = false
+
+	print("  Resource collision configured for ", TYPE_NAMES[resource_type], " - radius: ", nav_obstacle.radius, ", height: ", nav_obstacle.height)
 
 func can_gather() -> bool:
 	return current_amount > 0
