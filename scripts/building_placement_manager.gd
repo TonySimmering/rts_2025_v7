@@ -239,6 +239,15 @@ func create_construction_site_internal(placement_data: Dictionary, owner_player_
 	nav_obstacle.name = "NavigationObstacle3D"
 	site.add_child(nav_obstacle)
 
+	# Add collision shape for physical blocking
+	var collision_shape = CollisionShape3D.new()
+	collision_shape.name = "CollisionShape3D"
+	var box_shape = BoxShape3D.new()
+	box_shape.size = placement_data.size
+	collision_shape.shape = box_shape
+	collision_shape.position.y = placement_data.size.y / 2.0  # Center the collision
+	site.add_child(collision_shape)
+
 	# Setup construction site properties
 	site.player_id = owner_player_id
 	site.site_id = generate_site_id()

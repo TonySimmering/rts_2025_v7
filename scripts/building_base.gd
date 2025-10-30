@@ -54,13 +54,14 @@ func setup_navigation_obstacle():
 	# Wait for navigation system to be ready
 	await get_tree().physics_frame
 
-	# Enable avoidance so units path around the building
-	nav_obstacle.avoidance_enabled = true
-	nav_obstacle.use_3d_avoidance = true
+	# Disable dynamic avoidance for static buildings
+	# Buildings should rely on physical collision only
+	# NavigationObstacle3D avoidance is for moving obstacles
+	nav_obstacle.avoidance_enabled = false
+	nav_obstacle.use_3d_avoidance = false
 
-	# Position the obstacle at the center of the building's collision shape
-	# The radius and height are already set in the scene files
-	print("  Nav obstacle configured for building - radius: ", nav_obstacle.radius, ", height: ", nav_obstacle.height)
+	# Units will pathfind naturally and be stopped by physical collision
+	print("  Building collision configured - radius: ", nav_obstacle.radius, ", height: ", nav_obstacle.height)
 
 func apply_player_color():
 	"""Apply player color to building (simple team colors)"""

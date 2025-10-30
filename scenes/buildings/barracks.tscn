@@ -30,4 +30,3 @@ mesh = SubResource("CylinderMesh_selection")
 [node name="NavigationObstacle3D" type="NavigationObstacle3D" parent="."]
 radius = 3.5
 height = 5.0
-avoidance_enabled = true
