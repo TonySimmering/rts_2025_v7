@@ -63,7 +63,8 @@ func _input(event):
 	# Handle left-click to place building
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
 		if current_ghost and current_ghost.is_valid_placement:
-			place_building()
+			var queue_mode = Input.is_key_pressed(KEY_SHIFT)
+			place_building(queue_mode)
 			get_viewport().set_input_as_handled()
 
 	# Handle mouse motion to update ghost position
@@ -154,7 +155,7 @@ func rotate_ghost(angle_delta: float):
 		if terrain:
 			current_ghost.update_position(current_ghost.global_position, terrain)
 
-func place_building():
+func place_building(queue_mode: bool = false):
 	"""Place the building and create construction site"""
 	if not current_ghost or not current_ghost.is_valid_placement:
 		return
@@ -167,7 +168,7 @@ func place_building():
 		return
 
 	# Issue build commands to workers (local, they'll execute when site exists)
-	issue_build_commands(placement_data)
+	issue_build_commands(placement_data, queue_mode)
 
 	# Request construction site creation from server
 	if not multiplayer.is_server():
@@ -183,7 +184,7 @@ func place_building():
 	# Create new ghost for next placement
 	create_ghost(placement_data.building_type)
 
-	print("Building placed: ", placement_data.building_type, " at ", placement_data.position)
+	print("Building placed: ", placement_data.building_type, " at ", placement_data.position, " (Queue: ", queue_mode, ")")
 
 @rpc("any_peer", "call_remote", "reliable")
 func request_place_building_rpc(placement_data: Dictionary, requester_player_id: int):
@@ -249,10 +250,8 @@ func create_construction_site_internal(placement_data: Dictionary, owner_player_
 
 	print("Construction site created at ", placement_data.position, " for player ", owner_player_id)
 
-func issue_build_commands(placement_data: Dictionary):
+func issue_build_commands(placement_data: Dictionary, queue_mode: bool = false):
 	"""Issue build commands to selected workers"""
-	var queue_mode = true  # Always queue build commands
-
 	for worker in selected_workers:
 		if is_instance_valid(worker) and worker.is_multiplayer_authority():
 			if not worker.has_method("queue_command"):
@@ -263,10 +262,10 @@ func issue_build_commands(placement_data: Dictionary):
 			command.building_type = placement_data.building_type
 			command.metadata = placement_data
 
-			# Queue the build command
+			# Queue or replace based on queue_mode
 			worker.queue_command(command, queue_mode)
 
-	print("Build commands issued to ", selected_workers.size(), " workers")
+	print("Build commands issued to ", selected_workers.size(), " workers (Queue: ", queue_mode, ")")
 
 func can_afford_building(building_type: String) -> bool:
 	"""Check if player can afford the building"""
