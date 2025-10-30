@@ -14,6 +14,7 @@ var is_snapping: bool = false
 # Placement validation
 const MAX_TERRAIN_SLOPE: float = 0.3  # Maximum slope angle for building
 const SNAP_DISTANCE: float = 8.0  # Distance to trigger snapping
+const UNSNAP_DISTANCE: float = 12.0  # Distance to release snap (magnetic feel)
 const SNAP_GRID_SIZE: float = 4.0  # Grid size for snapping
 
 # Visual references
@@ -163,8 +164,8 @@ func rotate_building(angle_delta: float):
 	rotation_angle += angle_delta
 	rotation.y = rotation_angle
 
-func check_for_snapping(player_id: int) -> bool:
-	"""Check if ghost should snap to nearby buildings and construction sites"""
+func check_for_snapping(player_id: int, mouse_world_pos: Vector3) -> bool:
+	"""Check if ghost should snap to nearby buildings and construction sites (magnetic behavior)"""
 	# Get both buildings AND construction sites
 	var buildings = get_tree().get_nodes_in_group("player_%d_buildings" % player_id)
 	var construction_sites = get_tree().get_nodes_in_group("player_%d_construction_sites" % player_id)
@@ -175,6 +176,15 @@ func check_for_snapping(player_id: int) -> bool:
 	if all_targets.is_empty():
 		is_snapping = false
 		return false
+
+	# If already snapping, check if mouse moved far enough to unsnap (magnetic feel)
+	if is_snapping:
+		var distance_from_snap = mouse_world_pos.distance_to(snap_position)
+		if distance_from_snap > UNSNAP_DISTANCE:
+			is_snapping = false
+			return false
+		# Still within unsnap threshold, keep snapping
+		return true
 
 	# Find the nearest corner-to-corner snap position
 	var best_snap_data = find_nearest_corner_snap(all_targets)
