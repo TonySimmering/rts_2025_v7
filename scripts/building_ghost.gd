@@ -190,7 +190,7 @@ func check_for_snapping(player_id: int) -> bool:
 func get_building_size(building: Node) -> Vector3:
 	"""Get the size of a building or construction site"""
 	# Check if it's a construction site with building_size property
-	if building.has("building_size"):
+	if "building_size" in building:
 		return building.building_size
 
 	# Try to find CollisionShape3D child
