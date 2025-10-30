@@ -10,6 +10,7 @@ var rotation_angle: float = 0.0  # Y-axis rotation in radians
 var is_valid_placement: bool = false
 var snap_position: Vector3 = Vector3.ZERO
 var is_snapping: bool = false
+var snap_target: Node = null  # The building we're currently snapping to
 
 # Placement validation
 const MAX_TERRAIN_SLOPE: float = 0.3  # Maximum slope angle for building
@@ -128,12 +129,16 @@ func has_obstacles() -> bool:
 
 	# Create a box shape for collision check
 	var shape = BoxShape3D.new()
-	shape.size = building_size * 0.9  # Slightly smaller for clearance
+	shape.size = building_size  # Use full size for accurate edge-to-edge placement
 
 	var query = PhysicsShapeQueryParameters3D.new()
 	query.shape = shape
 	query.transform = Transform3D(Basis(), global_position + Vector3(0, building_size.y/2, 0))
 	query.collision_mask = 8  # Layer 4 - buildings
+
+	# Exclude the building we're snapping to from collision detection
+	if snap_target and is_instance_valid(snap_target):
+		query.exclude = [snap_target.get_rid()]
 
 	var results = space_state.intersect_shape(query, 10)
 
@@ -175,6 +180,7 @@ func check_for_snapping(player_id: int, mouse_world_pos: Vector3) -> bool:
 
 	if all_targets.is_empty():
 		is_snapping = false
+		snap_target = null
 		return false
 
 	# If already snapping, check if mouse moved far enough to unsnap (magnetic feel)
@@ -182,6 +188,7 @@ func check_for_snapping(player_id: int, mouse_world_pos: Vector3) -> bool:
 		var distance_from_snap = mouse_world_pos.distance_to(snap_position)
 		if distance_from_snap > UNSNAP_DISTANCE:
 			is_snapping = false
+			snap_target = null
 			return false
 		# Still within unsnap threshold, keep snapping
 		return true
@@ -191,10 +198,12 @@ func check_for_snapping(player_id: int, mouse_world_pos: Vector3) -> bool:
 
 	if not best_snap_data.is_empty():
 		snap_position = best_snap_data.position
+		snap_target = best_snap_data.target
 		is_snapping = true
 		return true
 	else:
 		is_snapping = false
+		snap_target = null
 		return false
 
 func get_building_size(building: Node) -> Vector3:
@@ -231,6 +240,7 @@ func find_nearest_edge_snap(targets: Array) -> Dictionary:
 	var ghost_half_z = building_size.z / 2.0
 	var best_snap_distance = SNAP_DISTANCE
 	var best_snap_position = null
+	var best_snap_target = null
 
 	for target in targets:
 		if not is_instance_valid(target):
@@ -247,6 +257,7 @@ func find_nearest_edge_snap(targets: Array) -> Dictionary:
 			if distance < best_snap_distance:
 				best_snap_distance = distance
 				best_snap_position = snap_pos
+				best_snap_target = target
 
 		# South edge of target (place ghost to the south, adjacent)
 		snap_pos = try_snap_to_edge(target.global_position, target_size, "south", ghost_half_x, ghost_half_z)
@@ -255,6 +266,7 @@ func find_nearest_edge_snap(targets: Array) -> Dictionary:
 			if distance < best_snap_distance:
 				best_snap_distance = distance
 				best_snap_position = snap_pos
+				best_snap_target = target
 
 		# East edge of target (place ghost to the east, adjacent)
 		snap_pos = try_snap_to_edge(target.global_position, target_size, "east", ghost_half_x, ghost_half_z)
@@ -263,6 +275,7 @@ func find_nearest_edge_snap(targets: Array) -> Dictionary:
 			if distance < best_snap_distance:
 				best_snap_distance = distance
 				best_snap_position = snap_pos
+				best_snap_target = target
 
 		# West edge of target (place ghost to the west, adjacent)
 		snap_pos = try_snap_to_edge(target.global_position, target_size, "west", ghost_half_x, ghost_half_z)
@@ -271,9 +284,10 @@ func find_nearest_edge_snap(targets: Array) -> Dictionary:
 			if distance < best_snap_distance:
 				best_snap_distance = distance
 				best_snap_position = snap_pos
+				best_snap_target = target
 
 	if best_snap_position != null:
-		return {"position": best_snap_position, "distance": best_snap_distance}
+		return {"position": best_snap_position, "distance": best_snap_distance, "target": best_snap_target}
 	else:
 		return {}
 
