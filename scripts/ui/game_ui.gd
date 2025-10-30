@@ -9,6 +9,7 @@ extends Control
 @onready var gold_label = $TopBar/HBox/ResourcePanel/Resources/GoldRow/Value
 @onready var wood_label = $TopBar/HBox/ResourcePanel/Resources/WoodRow/Value
 @onready var stone_label = $TopBar/HBox/ResourcePanel/Resources/StoneRow/Value
+@onready var population_label = $TopBar/HBox/ResourcePanel/Resources/PopulationRow/Value
 @onready var timer_label = $TopBar/HBox/TimerPanel/Time
 @onready var menu_button = $TopBar/HBox/MenuButton
 
@@ -52,13 +53,17 @@ func update_resources():
 	if not resource_manager:
 		resource_manager = get_node_or_null("/root/ResourceManager")
 		return
-	
+
 	var player_id = multiplayer.get_unique_id()
 	var resources = resource_manager.get_player_resources(player_id)
-	
+
 	gold_label.text = str(resources.get("gold", 0))
 	wood_label.text = str(resources.get("wood", 0))
 	stone_label.text = str(resources.get("stone", 0))
+
+	# Update population
+	var population = resource_manager.get_population(player_id)
+	population_label.text = "%d/%d" % [population.get("used", 0), population.get("capacity", 0)]
 
 func update_debug_info():
 	if not selection_manager:
