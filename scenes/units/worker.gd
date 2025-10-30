@@ -540,8 +540,11 @@ func _execute_build_command(command: UnitCommand):
 	target_construction_site = target_site
 	print("✓ Moving to build ", command.building_type)
 
-	# Move to construction site
-	navigation_agent.target_position = target_site.global_position
+	# Calculate a position on the perimeter of the construction site
+	var build_position = target_site.get_build_position_for_worker(global_position)
+
+	# Move to the perimeter position instead of the center
+	navigation_agent.target_position = build_position
 	state = UnitState.MOVING
 
 func process_building(delta):
@@ -553,11 +556,12 @@ func process_building(delta):
 		target_construction_site = null
 		return
 
-	# Check if in build range
+	# Check if in build range (from the center of the construction site)
 	var distance = global_position.distance_to(target_construction_site.global_position)
 	if distance > BUILD_RANGE:
-		# Move closer
-		navigation_agent.target_position = target_construction_site.global_position
+		# Move to a position on the perimeter instead of the center
+		var build_position = target_construction_site.get_build_position_for_worker(global_position)
+		navigation_agent.target_position = build_position
 		state = UnitState.MOVING
 		return
 

@@ -230,3 +230,20 @@ func is_in_build_range(unit_position: Vector3) -> bool:
 	"""Check if unit is close enough to build"""
 	const BUILD_RANGE = 5.0
 	return global_position.distance_to(unit_position) <= BUILD_RANGE
+
+func get_build_position_for_worker(worker_position: Vector3) -> Vector3:
+	"""Get a position on the perimeter of the building where a worker should stand to build"""
+	# Calculate the direction from the building center to the worker
+	var direction = (worker_position - global_position).normalized()
+
+	# Calculate the perimeter offset based on building size
+	# Add some padding (1.5 units) so workers stand just outside the building
+	var offset_distance = max(building_size.x, building_size.z) / 2.0 + 1.5
+
+	# Calculate the build position on the perimeter
+	var build_position = global_position + (direction * offset_distance)
+
+	# Keep the Y position the same as the building for ground-level access
+	build_position.y = global_position.y
+
+	return build_position
