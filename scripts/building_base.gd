@@ -28,22 +28,39 @@ var is_constructed: bool = true  # For future construction system
 func _ready():
 	add_to_group("buildings")
 	add_to_group("player_%d_buildings" % player_id)
-	
+
 	current_health = max_health
 	set_multiplayer_authority(player_id)
-	
+
 	setup_collision()
+	setup_navigation_obstacle()
 	apply_player_color()
-	
+
 	if selection_indicator:
 		selection_indicator.visible = false
-	
+
 	print("Building ready: ", building_name, " | Player: ", player_id, " | ID: ", building_id)
 
 func setup_collision():
 	"""Configure collision layers for buildings"""
 	collision_layer = 8  # Layer 4 (bit 3) - buildings
 	collision_mask = 0   # Buildings don't need to detect collisions
+
+func setup_navigation_obstacle():
+	"""Configure NavigationObstacle3D for pathfinding avoidance"""
+	if not nav_obstacle:
+		return
+
+	# Wait for navigation system to be ready
+	await get_tree().physics_frame
+
+	# Enable avoidance so units path around the building
+	nav_obstacle.avoidance_enabled = true
+	nav_obstacle.use_3d_avoidance = true
+
+	# Position the obstacle at the center of the building's collision shape
+	# The radius and height are already set in the scene files
+	print("  Nav obstacle configured for building - radius: ", nav_obstacle.radius, ", height: ", nav_obstacle.height)
 
 func apply_player_color():
 	"""Apply player color to building (simple team colors)"""
