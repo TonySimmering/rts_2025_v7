@@ -65,6 +65,10 @@ var heightmap: Array = []
 var terrain_seed: int = 0
 var vertex_colors: PackedColorArray = []
 
+# Track all flattened areas for persistent dirt texture
+# Each entry: {position: Vector3, radius: float, blend_padding: float}
+var flattened_areas: Array = []
+
 func _ready():
 	auto_generate = false
 	print("Terrain _ready() - auto_generate forcibly set to false")
@@ -229,7 +233,15 @@ func flatten_terrain_at_position(world_pos: Vector3, radius: float = 10.0, blend
 	overwriting the previous terrain modification.
 	"""
 	print("🔨 Flattening terrain at ", world_pos, " with radius ", radius, " (PERMANENT modification)")
-	
+
+	# Add this flattened area to the tracking list
+	flattened_areas.append({
+		"position": world_pos,
+		"radius": radius,
+		"blend_padding": blend_padding
+	})
+	print("   Total flattened areas: ", flattened_areas.size())
+
 	# Convert world position to grid coordinates
 	var grid_x = int(world_pos.x / terrain_scale)
 	var grid_z = int(world_pos.z / terrain_scale)
@@ -279,24 +291,41 @@ func flatten_terrain_at_position(world_pos: Vector3, radius: float = 10.0, blend
 				float(z) / float(terrain_depth - 1) * texture_scale
 			)
 			
-			# Calculate distance to flattened center
+			# Check against ALL flattened areas to determine texture
 			var world_vertex = Vector3(x * terrain_scale, 0, z * terrain_scale)
-			var distance = Vector2(world_vertex.x, world_vertex.z).distance_to(Vector2(world_pos.x, world_pos.z))
-			
 			var color: Color
-			
-			if distance < radius:
-				# Pure dirt in flattened area
-				color = Color(0.0, 1.0, 0.0, 0.0)  # G=dirt
-			elif distance < total_radius:
-				# Blend dirt to normal terrain texture
-				var blend_factor = (distance - radius) / blend_padding
-				blend_factor = smoothstep(0.0, 1.0, blend_factor)
-				
+			var is_dirt = false
+			var closest_blend_factor = 1.0  # 1.0 = normal terrain, 0.0 = pure dirt
+
+			# Check all flattened areas
+			for area in flattened_areas:
+				var area_pos = area.position
+				var area_radius = area.radius
+				var area_blend = area.blend_padding
+				var area_total_radius = area_radius + area_blend
+
+				var distance = Vector2(world_vertex.x, world_vertex.z).distance_to(Vector2(area_pos.x, area_pos.z))
+
+				if distance < area_radius:
+					# Inside a flattened area - pure dirt
+					is_dirt = true
+					closest_blend_factor = 0.0
+					break  # No need to check further
+				elif distance < area_total_radius:
+					# In blend zone - calculate blend factor
+					var blend_factor = (distance - area_radius) / area_blend
+					blend_factor = smoothstep(0.0, 1.0, blend_factor)
+
+					# Use the strongest dirt influence (lowest blend factor)
+					if blend_factor < closest_blend_factor:
+						closest_blend_factor = blend_factor
+						is_dirt = true
+
+			# Apply the calculated color
+			if is_dirt:
 				var normal_color = calculate_terrain_color(x, z, height)
 				var dirt_color_pure = Color(0.0, 1.0, 0.0, 0.0)
-				
-				color = lerp(dirt_color_pure, normal_color, blend_factor)
+				color = lerp(dirt_color_pure, normal_color, closest_blend_factor)
 			else:
 				# Normal terrain texture
 				color = calculate_terrain_color(x, z, height)
