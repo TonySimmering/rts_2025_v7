@@ -167,8 +167,9 @@ func place_building(queue_mode: bool = false):
 		print("Cannot afford building: ", placement_data.building_type)
 		return
 
-	# Issue build commands to workers (local, they'll execute when site exists)
-	issue_build_commands(placement_data, queue_mode)
+	# Store queue mode for later use
+	placement_data["queue_mode"] = queue_mode
+	placement_data["assigned_workers"] = selected_workers.duplicate()
 
 	# Request construction site creation from server
 	if not multiplayer.is_server():
@@ -250,22 +251,67 @@ func create_construction_site_internal(placement_data: Dictionary, owner_player_
 
 	print("Construction site created at ", placement_data.position, " for player ", owner_player_id)
 
-func issue_build_commands(placement_data: Dictionary, queue_mode: bool = false):
-	"""Issue build commands to selected workers"""
-	for worker in selected_workers:
-		if is_instance_valid(worker) and worker.is_multiplayer_authority():
-			if not worker.has_method("queue_command"):
-				continue
+	# Auto-assign workers if they were selected when placing
+	if placement_data.has("assigned_workers"):
+		var queue_mode = placement_data.get("queue_mode", false)
+		# Wait a frame for the construction site to be fully ready
+		await get_tree().process_frame
+		assign_workers_to_site_rpc.rpc(site.get_path(), placement_data.assigned_workers, queue_mode)
 
-			var command = UnitCommand.new(UnitCommand.CommandType.BUILD)
-			command.target_position = placement_data.position
-			command.building_type = placement_data.building_type
-			command.metadata = placement_data
+@rpc("any_peer", "call_local", "reliable")
+func assign_workers_to_site_rpc(site_path: NodePath, worker_paths: Array, queue_mode: bool):
+	"""Assign workers to a construction site (can be called from anywhere)"""
+	var site = get_node_or_null(site_path)
+	if not site or not is_instance_valid(site):
+		print("Construction site not found: ", site_path)
+		return
 
-			# Queue or replace based on queue_mode
-			worker.queue_command(command, queue_mode)
+	var assigned_count = 0
+	for worker_data in worker_paths:
+		var worker = null
 
-	print("Build commands issued to ", selected_workers.size(), " workers (Queue: ", queue_mode, ")")
+		# Handle both NodePath and actual worker references
+		if worker_data is NodePath:
+			worker = get_node_or_null(worker_data)
+		elif typeof(worker_data) == TYPE_OBJECT:
+			worker = worker_data
+
+		if not worker or not is_instance_valid(worker):
+			continue
+
+		if not worker.is_multiplayer_authority():
+			continue
+
+		if not worker.has_method("queue_command"):
+			continue
+
+		var command = UnitCommand.new(UnitCommand.CommandType.BUILD)
+		command.target_position = site.global_position
+		command.building_type = site.building_type
+		command.metadata = {
+			"position": site.global_position,
+			"rotation": site.target_rotation,
+			"size": site.building_size,
+			"building_type": site.building_type
+		}
+
+		# Queue or replace based on queue_mode
+		worker.queue_command(command, queue_mode)
+		assigned_count += 1
+
+	print("Assigned ", assigned_count, " workers to construction site (Queue: ", queue_mode, ")")
+
+func assign_workers_to_construction_site(site: Node, workers: Array, queue_mode: bool = false):
+	"""Helper function to assign workers to a specific construction site"""
+	if not site or not is_instance_valid(site):
+		return
+
+	var worker_paths = []
+	for worker in workers:
+		if is_instance_valid(worker):
+			worker_paths.append(worker)
+
+	assign_workers_to_site_rpc.rpc(site.get_path(), worker_paths, queue_mode)
 
 func can_afford_building(building_type: String) -> bool:
 	"""Check if player can afford the building"""
