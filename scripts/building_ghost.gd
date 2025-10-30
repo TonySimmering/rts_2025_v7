@@ -186,8 +186,8 @@ func check_for_snapping(player_id: int, mouse_world_pos: Vector3) -> bool:
 		# Still within unsnap threshold, keep snapping
 		return true
 
-	# Find the nearest corner-to-corner snap position
-	var best_snap_data = find_nearest_corner_snap(all_targets)
+	# Find the nearest edge-to-edge snap position
+	var best_snap_data = find_nearest_edge_snap(all_targets)
 
 	if not best_snap_data.is_empty():
 		snap_position = best_snap_data.position
@@ -213,21 +213,22 @@ func get_building_size(building: Node) -> Vector3:
 	# Fallback to default size if not found
 	return Vector3(4, 4, 4)
 
-func get_corners_2d(center: Vector3, size: Vector3) -> Array:
-	"""Get the 4 corners of a building in 2D (XZ plane)"""
+func get_building_edges(center: Vector3, size: Vector3) -> Dictionary:
+	"""Get the 4 edges of a building in 2D (XZ plane)"""
 	var half_x = size.x / 2.0
 	var half_z = size.z / 2.0
 
-	return [
-		Vector2(center.x - half_x, center.z - half_z),  # Bottom-left
-		Vector2(center.x + half_x, center.z - half_z),  # Bottom-right
-		Vector2(center.x - half_x, center.z + half_z),  # Top-left
-		Vector2(center.x + half_x, center.z + half_z),  # Top-right
-	]
+	return {
+		"north": {"pos": center.z + half_z, "min_x": center.x - half_x, "max_x": center.x + half_x, "axis": "z"},
+		"south": {"pos": center.z - half_z, "min_x": center.x - half_x, "max_x": center.x + half_x, "axis": "z"},
+		"east": {"pos": center.x + half_x, "min_z": center.z - half_z, "max_z": center.z + half_z, "axis": "x"},
+		"west": {"pos": center.x - half_x, "min_z": center.z - half_z, "max_z": center.z + half_z, "axis": "x"}
+	}
 
-func find_nearest_corner_snap(targets: Array) -> Dictionary:
-	"""Find the nearest corner-to-corner snap position among all targets"""
-	var ghost_corners = get_corners_2d(global_position, building_size)
+func find_nearest_edge_snap(targets: Array) -> Dictionary:
+	"""Find the nearest edge-to-edge snap position among all targets"""
+	var ghost_half_x = building_size.x / 2.0
+	var ghost_half_z = building_size.z / 2.0
 	var best_snap_distance = SNAP_DISTANCE
 	var best_snap_position = null
 
@@ -236,38 +237,83 @@ func find_nearest_corner_snap(targets: Array) -> Dictionary:
 			continue
 
 		var target_size = get_building_size(target)
-		var target_corners = get_corners_2d(target.global_position, target_size)
+		var target_edges = get_building_edges(target.global_position, target_size)
 
-		# Check all corner-to-corner combinations
-		for ghost_corner_idx in range(ghost_corners.size()):
-			var ghost_corner = ghost_corners[ghost_corner_idx]
+		# Try snapping to each edge of the target building
+		# North edge of target (place ghost to the north, adjacent)
+		var snap_pos = try_snap_to_edge(target.global_position, target_size, "north", ghost_half_x, ghost_half_z)
+		if snap_pos:
+			var distance = global_position.distance_to(snap_pos)
+			if distance < best_snap_distance:
+				best_snap_distance = distance
+				best_snap_position = snap_pos
 
-			for target_corner_idx in range(target_corners.size()):
-				var target_corner = target_corners[target_corner_idx]
+		# South edge of target (place ghost to the south, adjacent)
+		snap_pos = try_snap_to_edge(target.global_position, target_size, "south", ghost_half_x, ghost_half_z)
+		if snap_pos:
+			var distance = global_position.distance_to(snap_pos)
+			if distance < best_snap_distance:
+				best_snap_distance = distance
+				best_snap_position = snap_pos
 
-				# Calculate distance between these two corners
-				var distance = ghost_corner.distance_to(target_corner)
+		# East edge of target (place ghost to the east, adjacent)
+		snap_pos = try_snap_to_edge(target.global_position, target_size, "east", ghost_half_x, ghost_half_z)
+		if snap_pos:
+			var distance = global_position.distance_to(snap_pos)
+			if distance < best_snap_distance:
+				best_snap_distance = distance
+				best_snap_position = snap_pos
 
-				if distance < best_snap_distance:
-					# Calculate where ghost center would be if this corner aligned
-					var corner_offset = ghost_corner - Vector2(global_position.x, global_position.z)
-					var new_center = Vector3(
-						target_corner.x - corner_offset.x,
-						global_position.y,
-						target_corner.y - corner_offset.y
-					)
-
-					# Snap to grid
-					new_center.x = round(new_center.x / SNAP_GRID_SIZE) * SNAP_GRID_SIZE
-					new_center.z = round(new_center.z / SNAP_GRID_SIZE) * SNAP_GRID_SIZE
-
-					best_snap_distance = distance
-					best_snap_position = new_center
+		# West edge of target (place ghost to the west, adjacent)
+		snap_pos = try_snap_to_edge(target.global_position, target_size, "west", ghost_half_x, ghost_half_z)
+		if snap_pos:
+			var distance = global_position.distance_to(snap_pos)
+			if distance < best_snap_distance:
+				best_snap_distance = distance
+				best_snap_position = snap_pos
 
 	if best_snap_position != null:
 		return {"position": best_snap_position, "distance": best_snap_distance}
 	else:
-		return {}  # Return empty dictionary instead of null
+		return {}
+
+func try_snap_to_edge(target_pos: Vector3, target_size: Vector3, edge: String, ghost_half_x: float, ghost_half_z: float) -> Vector3:
+	"""Calculate snap position for placing ghost adjacent to a specific edge of target"""
+	var target_half_x = target_size.x / 2.0
+	var target_half_z = target_size.z / 2.0
+	var snap_pos = Vector3.ZERO
+
+	match edge:
+		"north":  # Place ghost to the north (positive Z)
+			snap_pos = Vector3(
+				target_pos.x,
+				global_position.y,
+				target_pos.z + target_half_z + ghost_half_z
+			)
+		"south":  # Place ghost to the south (negative Z)
+			snap_pos = Vector3(
+				target_pos.x,
+				global_position.y,
+				target_pos.z - target_half_z - ghost_half_z
+			)
+		"east":  # Place ghost to the east (positive X)
+			snap_pos = Vector3(
+				target_pos.x + target_half_x + ghost_half_x,
+				global_position.y,
+				target_pos.z
+			)
+		"west":  # Place ghost to the west (negative X)
+			snap_pos = Vector3(
+				target_pos.x - target_half_x - ghost_half_x,
+				global_position.y,
+				target_pos.z
+			)
+
+	# Snap to grid
+	snap_pos.x = round(snap_pos.x / SNAP_GRID_SIZE) * SNAP_GRID_SIZE
+	snap_pos.z = round(snap_pos.z / SNAP_GRID_SIZE) * SNAP_GRID_SIZE
+
+	return snap_pos
 
 func apply_snapping():
 	"""Apply snapped position to ghost"""
