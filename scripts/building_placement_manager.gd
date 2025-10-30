@@ -141,8 +141,8 @@ func update_ghost_position(mouse_pos: Vector2):
 	if result:
 		var world_pos = result.position
 
-		# Check for snapping to nearby buildings
-		if current_ghost.check_for_snapping(player_id):
+		# Check for snapping to nearby buildings (magnetic behavior)
+		if current_ghost.check_for_snapping(player_id, world_pos):
 			current_ghost.apply_snapping()
 		else:
 			current_ghost.update_position(world_pos, terrain)
