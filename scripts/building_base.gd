@@ -96,11 +96,17 @@ func sync_health(new_health: int):
 	health_changed.emit(current_health, max_health)
 
 func destroy():
-	"""Destroy this building"""
+	"""
+	Destroy this building.
+
+	NOTE: Terrain modifications (flattening and dirt texture) are NOT reverted when a building
+	is destroyed. The terrain remains modified for the entire runtime session. This is intentional
+	to allow players to rebuild on the same flattened ground without re-flattening.
+	"""
 	if not multiplayer.is_server():
 		return
-	
-	print("Building destroyed: ", building_name)
+
+	print("🏚️ Building destroyed: ", building_name, " (terrain modifications remain)")
 	destroyed.emit()
 	destroy_rpc.rpc()
 

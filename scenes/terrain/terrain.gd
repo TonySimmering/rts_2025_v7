@@ -218,8 +218,17 @@ func calculate_slope(x: int, z: int) -> float:
 	return rad_to_deg(slope_radians)
 
 func flatten_terrain_at_position(world_pos: Vector3, radius: float = 10.0, blend_padding: float = 3.0):
-	"""Flatten terrain and set to dirt texture at the given world position with smooth blending"""
-	print("Flattening terrain at ", world_pos, " with radius ", radius)
+	"""
+	Flatten terrain and set to dirt texture at the given world position with smooth blending.
+
+	IMPORTANT: This modification is PERMANENT for the runtime. The heightmap and vertex colors
+	are modified directly and will persist even if the building is destroyed. This allows
+	multiple buildings to be constructed on the same flattened terrain without re-flattening.
+
+	If a new building is placed in the same location, this function will be called again,
+	overwriting the previous terrain modification.
+	"""
+	print("🔨 Flattening terrain at ", world_pos, " with radius ", radius, " (PERMANENT modification)")
 	
 	# Convert world position to grid coordinates
 	var grid_x = int(world_pos.x / terrain_scale)
@@ -322,8 +331,8 @@ func flatten_terrain_at_position(world_pos: Vector3, radius: float = 10.0, blend
 	
 	# Rebake navigation
 	await bake_navigation()
-	
-	print("Terrain flattened and rebaked successfully!")
+
+	print("✅ Terrain flattened and rebaked successfully! (Modifications are PERMANENT for this runtime session)")
 
 func get_height_at_position(world_pos: Vector3) -> float:
 	"""Get terrain height at a world position"""
