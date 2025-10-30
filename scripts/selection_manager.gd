@@ -113,12 +113,17 @@ func _on_right_mouse_down(mouse_pos: Vector2):
 	
 	if result:
 		var clicked_object = result.collider
-		
+
+		# Check if clicked on a construction site
+		if clicked_object.is_in_group("construction_sites"):
+			_issue_build_command(clicked_object)
+			return
+
 		# Check if clicked on a resource node
 		if clicked_object.is_in_group("resource_nodes"):
 			_issue_gather_command(clicked_object)
 			return
-		
+
 		# Otherwise, it's a move command (only for units)
 		formation_center = result.position
 		rotation_start_pos = mouse_pos
@@ -129,21 +134,56 @@ func _issue_gather_command(resource_node: Node):
 	"""Issue gather command to selected units"""
 	var queue_mode = Input.is_key_pressed(KEY_SHIFT)
 	var resource_type = resource_node.get_resource_type_string()
-	
+
 	print("Gather command: ", selected_units.size(), " units → ", resource_type, " node")
-	
+
 	for unit in selected_units:
 		if is_instance_valid(unit) and unit.is_multiplayer_authority():
 			# Check if unit can gather
 			if not unit.has_method("queue_command"):
 				continue
-			
+
 			var command = UnitCommand.new(UnitCommand.CommandType.GATHER)
 			command.target_entity = resource_node  # FIX: Use target_entity not target_resource
 			command.target_position = resource_node.global_position  # FIX: Add position for network sync
-			
+
 			# Queue or replace based on shift key
 			unit.queue_command(command, queue_mode)
+
+func _issue_build_command(construction_site: Node):
+	"""Issue build command to selected units for a construction site"""
+	var queue_mode = Input.is_key_pressed(KEY_SHIFT)
+
+	print("Build command: ", selected_units.size(), " units → construction site")
+
+	# Get building placement manager from game
+	var game = get_tree().root.get_node_or_null("Game")
+	if not game:
+		print("Game node not found")
+		return
+
+	var placement_manager = null
+	for child in game.get_children():
+		if child is BuildingPlacementManager:
+			placement_manager = child
+			break
+
+	if not placement_manager:
+		print("Building placement manager not found")
+		return
+
+	# Filter only workers
+	var workers = []
+	for unit in selected_units:
+		if is_instance_valid(unit) and unit.is_in_group("worker"):
+			workers.append(unit)
+
+	if workers.is_empty():
+		print("No workers selected to build")
+		return
+
+	# Assign workers to construction site
+	placement_manager.assign_workers_to_construction_site(construction_site, workers, queue_mode)
 
 func _on_right_mouse_up():
 	if is_rotating_formation and selected_units.size() > 0:
