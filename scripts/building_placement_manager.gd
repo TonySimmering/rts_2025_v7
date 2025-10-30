@@ -102,10 +102,9 @@ func create_ghost(building_type: String):
 	if current_ghost:
 		current_ghost.queue_free()
 
-	# Load ghost scene or create programmatically
-	var ghost_scene = preload("res://scripts/building_ghost.gd")
-	current_ghost = Node3D.new()
-	current_ghost.set_script(ghost_scene)
+	# Load and instantiate the BuildingGhost script
+	var ghost_script = load("res://scripts/building_ghost.gd")
+	current_ghost = ghost_script.new()
 
 	# Add visual components
 	var mesh_instance = MeshInstance3D.new()
