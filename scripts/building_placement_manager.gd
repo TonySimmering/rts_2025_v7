@@ -106,10 +106,14 @@ func create_ghost(building_type: String):
 	var ghost_script = load("res://scripts/building_ghost.gd")
 	current_ghost = ghost_script.new()
 
-	# Add visual components
+	# Add required child nodes BEFORE adding to tree (for @onready references)
 	var mesh_instance = MeshInstance3D.new()
 	mesh_instance.name = "MeshInstance3D"
 	current_ghost.add_child(mesh_instance)
+
+	var placement_indicator = MeshInstance3D.new()
+	placement_indicator.name = "PlacementIndicator"
+	current_ghost.add_child(placement_indicator)
 
 	# Add to scene
 	get_tree().root.add_child(current_ghost)
@@ -194,14 +198,26 @@ func create_construction_site(placement_data: Dictionary):
 	# Flatten terrain at building position
 	if terrain:
 		var flatten_radius = placement_data.size.x / 2.0 + 1.0
-		terrain.flatten_terrain_at_position(placement_data.position, flatten_radius, 2.0)
+		await terrain.flatten_terrain_at_position(placement_data.position, flatten_radius, 2.0)
 
-	# Load construction site scene
-	var site_scene_path = "res://scripts/construction_site.gd"
-	var site = Node3D.new()
-	site.set_script(load(site_scene_path))
+	# Load and instantiate construction site script
+	var site_script = load("res://scripts/construction_site.gd")
+	var site = site_script.new()
 
-	# Setup construction site
+	# Add required child nodes BEFORE adding to tree (for @onready references)
+	var mesh_instance = MeshInstance3D.new()
+	mesh_instance.name = "MeshInstance3D"
+	site.add_child(mesh_instance)
+
+	var progress_indicator = Node3D.new()
+	progress_indicator.name = "ProgressIndicator"
+	site.add_child(progress_indicator)
+
+	var nav_obstacle = NavigationObstacle3D.new()
+	nav_obstacle.name = "NavigationObstacle3D"
+	site.add_child(nav_obstacle)
+
+	# Setup construction site properties
 	site.player_id = player_id
 	site.site_id = generate_site_id()
 	site.building_type = placement_data.building_type
@@ -209,15 +225,6 @@ func create_construction_site(placement_data: Dictionary):
 	site.target_rotation = placement_data.rotation
 	site.construction_time = CONSTRUCTION_TIMES[placement_data.building_type]
 	site.construction_cost = BUILDING_COSTS[placement_data.building_type]
-
-	# Add visual components to site
-	var mesh_instance = MeshInstance3D.new()
-	mesh_instance.name = "MeshInstance3D"
-	site.add_child(mesh_instance)
-
-	var nav_obstacle = NavigationObstacle3D.new()
-	nav_obstacle.name = "NavigationObstacle3D"
-	site.add_child(nav_obstacle)
 
 	# Set position and rotation
 	site.global_position = placement_data.position
