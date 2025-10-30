@@ -185,27 +185,46 @@ func check_for_snapping(player_id: int) -> bool:
 		is_snapping = false
 		return false
 
+func get_building_size(building: Node) -> Vector3:
+	"""Get the size of a building from its collision shape"""
+	# Try to find CollisionShape3D child
+	for child in building.get_children():
+		if child is CollisionShape3D:
+			var shape = child.shape
+			if shape is BoxShape3D:
+				return shape.size
+
+	# Fallback to default size if not found
+	return Vector3(4, 4, 4)
+
 func calculate_snap_position(building: Node) -> Vector3:
-	"""Calculate snapped position relative to building"""
+	"""Calculate snapped position relative to building (edge-to-edge, corner-to-corner)"""
 	var offset_x = building.global_position.x - global_position.x
 	var offset_z = building.global_position.z - global_position.z
+
+	# Get the target building's actual size
+	var target_size = get_building_size(building)
 
 	# Determine snapping direction (left, right, front, back)
 	var snap_pos = building.global_position
 
 	if abs(offset_x) > abs(offset_z):
-		# Snap horizontally
+		# Snap horizontally (left or right of target building)
 		if offset_x > 0:
-			snap_pos.x += (building_size.x + building_size.x) / 2.0
+			# Target is to the right, snap ghost to the right of target (edge-to-edge)
+			snap_pos.x += (target_size.x + building_size.x) / 2.0
 		else:
-			snap_pos.x -= (building_size.x + building_size.x) / 2.0
+			# Target is to the left, snap ghost to the left of target (edge-to-edge)
+			snap_pos.x -= (target_size.x + building_size.x) / 2.0
 		snap_pos.z = building.global_position.z
 	else:
-		# Snap vertically
+		# Snap vertically (front or back of target building)
 		if offset_z > 0:
-			snap_pos.z += (building_size.z + building_size.z) / 2.0
+			# Target is ahead, snap ghost ahead of target (edge-to-edge)
+			snap_pos.z += (target_size.z + building_size.z) / 2.0
 		else:
-			snap_pos.z -= (building_size.z + building_size.z) / 2.0
+			# Target is behind, snap ghost behind target (edge-to-edge)
+			snap_pos.z -= (target_size.z + building_size.z) / 2.0
 		snap_pos.x = building.global_position.x
 
 	# Snap to grid
