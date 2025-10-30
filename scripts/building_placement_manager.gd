@@ -169,7 +169,13 @@ func place_building(queue_mode: bool = false):
 
 	# Store queue mode for later use
 	placement_data["queue_mode"] = queue_mode
-	placement_data["assigned_workers"] = selected_workers.duplicate()
+
+	# Convert workers to NodePaths for RPC serialization
+	var worker_paths = []
+	for worker in selected_workers:
+		if is_instance_valid(worker):
+			worker_paths.append(worker.get_path())
+	placement_data["assigned_workers"] = worker_paths
 
 	# Request construction site creation from server
 	if not multiplayer.is_server():

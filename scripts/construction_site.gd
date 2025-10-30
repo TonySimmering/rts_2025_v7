@@ -175,13 +175,19 @@ func spawn_building():
 	var building = building_scene.instantiate()
 	building.player_id = player_id
 	building.building_id = site_id
-	building.global_position = global_position
-	building.global_rotation.y = target_rotation
 
-	# Add to game world
+	# Store position before adding to tree
+	var spawn_position = global_position
+	var spawn_rotation = target_rotation
+
+	# Add to game world FIRST (Godot requirement)
 	get_tree().root.get_node("Game").add_child(building, true)
 
-	print("Building spawned: ", building_type, " at ", global_position)
+	# THEN set position and rotation (after adding to tree)
+	building.global_position = spawn_position
+	building.global_rotation.y = spawn_rotation
+
+	print("Building spawned: ", building_type, " at ", spawn_position)
 
 @rpc("authority", "call_local", "reliable")
 func sync_progress(progress: float):
