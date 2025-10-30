@@ -164,21 +164,23 @@ func rotate_building(angle_delta: float):
 	rotation.y = rotation_angle
 
 func check_for_snapping(player_id: int) -> bool:
-	"""Check if ghost should snap to nearby buildings"""
+	"""Check if ghost should snap to nearby buildings and construction sites"""
+	# Get both buildings AND construction sites
 	var buildings = get_tree().get_nodes_in_group("player_%d_buildings" % player_id)
+	var construction_sites = get_tree().get_nodes_in_group("player_%d_construction_sites" % player_id)
 
-	var closest_building = null
-	var closest_distance = SNAP_DISTANCE
+	# Combine into one array of targets
+	var all_targets = buildings + construction_sites
 
-	for building in buildings:
-		var distance = global_position.distance_to(building.global_position)
-		if distance < closest_distance:
-			closest_building = building
-			closest_distance = distance
+	if all_targets.is_empty():
+		is_snapping = false
+		return false
 
-	if closest_building:
-		# Calculate snap position
-		snap_position = calculate_snap_position(closest_building)
+	# Find the nearest corner-to-corner snap position
+	var best_snap_data = find_nearest_corner_snap(all_targets)
+
+	if best_snap_data != null:
+		snap_position = best_snap_data.position
 		is_snapping = true
 		return true
 	else:
@@ -186,7 +188,11 @@ func check_for_snapping(player_id: int) -> bool:
 		return false
 
 func get_building_size(building: Node) -> Vector3:
-	"""Get the size of a building from its collision shape"""
+	"""Get the size of a building or construction site"""
+	# Check if it's a construction site with building_size property
+	if building.has("building_size"):
+		return building.building_size
+
 	# Try to find CollisionShape3D child
 	for child in building.get_children():
 		if child is CollisionShape3D:
@@ -197,41 +203,61 @@ func get_building_size(building: Node) -> Vector3:
 	# Fallback to default size if not found
 	return Vector3(4, 4, 4)
 
-func calculate_snap_position(building: Node) -> Vector3:
-	"""Calculate snapped position relative to building (edge-to-edge, corner-to-corner)"""
-	var offset_x = building.global_position.x - global_position.x
-	var offset_z = building.global_position.z - global_position.z
+func get_corners_2d(center: Vector3, size: Vector3) -> Array:
+	"""Get the 4 corners of a building in 2D (XZ plane)"""
+	var half_x = size.x / 2.0
+	var half_z = size.z / 2.0
 
-	# Get the target building's actual size
-	var target_size = get_building_size(building)
+	return [
+		Vector2(center.x - half_x, center.z - half_z),  # Bottom-left
+		Vector2(center.x + half_x, center.z - half_z),  # Bottom-right
+		Vector2(center.x - half_x, center.z + half_z),  # Top-left
+		Vector2(center.x + half_x, center.z + half_z),  # Top-right
+	]
 
-	# Determine snapping direction (left, right, front, back)
-	var snap_pos = building.global_position
+func find_nearest_corner_snap(targets: Array) -> Dictionary:
+	"""Find the nearest corner-to-corner snap position among all targets"""
+	var ghost_corners = get_corners_2d(global_position, building_size)
+	var best_snap_distance = SNAP_DISTANCE
+	var best_snap_position = null
 
-	if abs(offset_x) > abs(offset_z):
-		# Snap horizontally (left or right of target building)
-		if offset_x > 0:
-			# Target is to the right, snap ghost to the right of target (edge-to-edge)
-			snap_pos.x += (target_size.x + building_size.x) / 2.0
-		else:
-			# Target is to the left, snap ghost to the left of target (edge-to-edge)
-			snap_pos.x -= (target_size.x + building_size.x) / 2.0
-		snap_pos.z = building.global_position.z
+	for target in targets:
+		if not is_instance_valid(target):
+			continue
+
+		var target_size = get_building_size(target)
+		var target_corners = get_corners_2d(target.global_position, target_size)
+
+		# Check all corner-to-corner combinations
+		for ghost_corner_idx in range(ghost_corners.size()):
+			var ghost_corner = ghost_corners[ghost_corner_idx]
+
+			for target_corner_idx in range(target_corners.size()):
+				var target_corner = target_corners[target_corner_idx]
+
+				# Calculate distance between these two corners
+				var distance = ghost_corner.distance_to(target_corner)
+
+				if distance < best_snap_distance:
+					# Calculate where ghost center would be if this corner aligned
+					var corner_offset = ghost_corner - Vector2(global_position.x, global_position.z)
+					var new_center = Vector3(
+						target_corner.x - corner_offset.x,
+						global_position.y,
+						target_corner.y - corner_offset.y
+					)
+
+					# Snap to grid
+					new_center.x = round(new_center.x / SNAP_GRID_SIZE) * SNAP_GRID_SIZE
+					new_center.z = round(new_center.z / SNAP_GRID_SIZE) * SNAP_GRID_SIZE
+
+					best_snap_distance = distance
+					best_snap_position = new_center
+
+	if best_snap_position != null:
+		return {"position": best_snap_position, "distance": best_snap_distance}
 	else:
-		# Snap vertically (front or back of target building)
-		if offset_z > 0:
-			# Target is ahead, snap ghost ahead of target (edge-to-edge)
-			snap_pos.z += (target_size.z + building_size.z) / 2.0
-		else:
-			# Target is behind, snap ghost behind target (edge-to-edge)
-			snap_pos.z -= (target_size.z + building_size.z) / 2.0
-		snap_pos.x = building.global_position.x
-
-	# Snap to grid
-	snap_pos.x = round(snap_pos.x / SNAP_GRID_SIZE) * SNAP_GRID_SIZE
-	snap_pos.z = round(snap_pos.z / SNAP_GRID_SIZE) * SNAP_GRID_SIZE
-
-	return snap_pos
+		return null
 
 func apply_snapping():
 	"""Apply snapped position to ghost"""
