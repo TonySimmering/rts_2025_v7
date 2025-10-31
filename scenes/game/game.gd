@@ -22,13 +22,14 @@ func _ready():
 	print("My ID:", multiplayer.get_unique_id())
 	print("Connected Players:", NetworkManager.players)
 	print("Game Seed:", NetworkManager.game_seed)
-	
+
 	spawn_local_camera()
 	setup_selection_system()
 	setup_building_placement_system()
 	setup_production_ui()
 	await generate_terrain_with_seed()
 	setup_spawn_system()
+	focus_camera_on_player_start()
 	spawn_town_centers_and_units()
 	
 	NetworkManager.player_connected.connect(_on_player_joined)
@@ -46,12 +47,28 @@ func _ready():
 func spawn_local_camera():
 	local_camera = CAMERA_RIG_SCENE.instantiate()
 	add_child(local_camera)
-	
+
 	var terrain = get_node_or_null("Terrain")
 	if terrain:
 		local_camera.set_terrain(terrain)
-	
+
 	print("Local camera spawned for player ", multiplayer.get_unique_id())
+
+func focus_camera_on_player_start():
+	"""Focus the camera on the local player's starting position"""
+	if not local_camera or not spawn_manager:
+		return
+
+	var player_id = multiplayer.get_unique_id()
+	var map_size = Vector2(128, 128)
+
+	# Get the spawn position for this player (same logic as spawn_manager)
+	var spawn_pos = spawn_manager.get_spawn_location_for_player(player_id, map_size)
+
+	# Focus camera on the spawn position
+	local_camera.focus_on_position(spawn_pos)
+
+	print("Camera focused on player ", player_id, " start position: ", spawn_pos)
 
 func setup_selection_system():
 	selection_manager = Node.new()
