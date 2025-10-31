@@ -67,10 +67,6 @@ func _input(event):
 			place_building(queue_mode)
 			get_viewport().set_input_as_handled()
 
-	# Handle mouse motion to update ghost position
-	if event is InputEventMouseMotion:
-		update_ghost_position(event.position)
-
 func start_placement_mode(building_type: String, workers: Array):
 	"""Start building placement mode"""
 	if not can_afford_building(building_type):
@@ -122,7 +118,13 @@ func create_ghost(building_type: String):
 	# Initialize ghost
 	current_ghost.set_building_type(building_type)
 
-func update_ghost_position(mouse_pos: Vector2):
+func _process(delta):
+	"""Update ghost position each frame for smooth snapping"""
+	if is_placing and current_ghost:
+		var mouse_pos = get_viewport().get_mouse_position()
+		update_ghost_position(mouse_pos, delta)
+
+func update_ghost_position(mouse_pos: Vector2, delta: float = 0.0):
 	"""Update ghost position based on mouse position"""
 	if not current_ghost or not camera or not terrain:
 		return
@@ -142,8 +144,9 @@ func update_ghost_position(mouse_pos: Vector2):
 		var world_pos = result.position
 
 		# Check for snapping to nearby buildings (magnetic behavior)
-		if current_ghost.check_for_snapping(player_id, world_pos):
-			current_ghost.apply_snapping()
+		if current_ghost.check_for_snapping(player_id, world_pos, delta):
+			# Position already applied by snap controller
+			pass
 		else:
 			current_ghost.update_position(world_pos, terrain)
 

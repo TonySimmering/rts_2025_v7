@@ -1,22 +1,16 @@
 extends Node3D
 class_name BuildingGhost
 
-# Ghost placement preview for buildings
+# Ghost placement preview for buildings with modular snapping system
 
 # Ghost state
 var building_type: String = ""
 var building_size: Vector3 = Vector3(4, 4, 4)
 var rotation_angle: float = 0.0  # Y-axis rotation in radians
 var is_valid_placement: bool = false
-var snap_position: Vector3 = Vector3.ZERO
-var is_snapping: bool = false
-var snap_target: Node = null  # The building we're currently snapping to
 
 # Placement validation
 const MAX_TERRAIN_SLOPE: float = 0.3  # Maximum slope angle for building
-const SNAP_DISTANCE: float = 8.0  # Distance to trigger snapping
-const UNSNAP_DISTANCE: float = 12.0  # Distance to release snap (magnetic feel)
-const SNAP_GRID_SIZE: float = 4.0  # Grid size for snapping
 
 # Visual references
 @onready var mesh_instance: MeshInstance3D = $MeshInstance3D
@@ -26,10 +20,64 @@ const SNAP_GRID_SIZE: float = 4.0  # Grid size for snapping
 var valid_material: StandardMaterial3D
 var invalid_material: StandardMaterial3D
 
+# Modular placement components
+var snap_controller: BuildingSnapController
+var grid_manager: GridManager
+var visualizer: PlacementVisualizer
+
+# Cached data for visualization
+var nearby_snap_points: Array = []
+var last_update_time: float = 0.0
+
 func _ready():
 	setup_materials()
 	setup_mesh()
+	setup_placement_components()
 	update_placement_validity(false)
+
+func setup_placement_components():
+	"""Initialize modular placement components"""
+	# Create snap controller
+	snap_controller = BuildingSnapController.new()
+	snap_controller.set_smooth_snapping(true)
+
+	# Create grid manager
+	grid_manager = GridManager.new(4.0)  # 4.0 grid size
+	grid_manager.set_grid_enabled(true)
+
+	# Create visualizer
+	visualizer = PlacementVisualizer.new()
+	add_child(visualizer)
+	visualizer.set_snap_points_visible(true)
+	visualizer.set_snap_lines_visible(true)
+	visualizer.set_connections_visible(true)
+
+func _process(delta):
+	"""Update visualizations each frame"""
+	# Update visualizer with current snap state
+	if visualizer and snap_controller:
+		var active_snap = null
+		if snap_controller.is_currently_snapping():
+			var snap_info = snap_controller.get_snap_info()
+			# Create a minimal snap point for visualization
+			if not snap_info.is_empty():
+				active_snap = {
+					"position": snap_info.position,
+					"target": snap_info.target
+				}
+
+		# Get grid visualization data if needed
+		var grid_data = {}
+		if grid_manager and grid_manager.is_grid_visible():
+			var camera_pos = get_viewport().get_camera_3d().global_position if get_viewport().get_camera_3d() else global_position
+			grid_data = grid_manager.get_grid_visualization_data(camera_pos, 30.0)
+
+		visualizer.update_visualization(
+			global_position,
+			nearby_snap_points,
+			active_snap,
+			grid_data
+		)
 
 func setup_materials():
 	"""Create materials for valid/invalid placement"""
@@ -72,7 +120,13 @@ func set_building_type(type: String):
 
 func update_position(world_position: Vector3, terrain: Node):
 	"""Update ghost position and validate placement"""
-	global_position = world_position
+	# Apply grid snapping if not magnetically snapping
+	var final_position = world_position
+
+	if grid_manager and not snap_controller.is_currently_snapping():
+		final_position = grid_manager.snap_to_grid(world_position, building_size)
+
+	global_position = final_position
 
 	# Check placement validity
 	is_valid_placement = validate_placement(terrain)
@@ -137,6 +191,7 @@ func has_obstacles() -> bool:
 	query.collision_mask = 8  # Layer 4 - buildings
 
 	# Exclude the building we're snapping to from collision detection
+	var snap_target = snap_controller.get_snap_target() if snap_controller else null
 	if snap_target and is_instance_valid(snap_target):
 		query.exclude = [snap_target.get_rid()]
 
@@ -169,8 +224,11 @@ func rotate_building(angle_delta: float):
 	rotation_angle += angle_delta
 	rotation.y = rotation_angle
 
-func check_for_snapping(player_id: int, mouse_world_pos: Vector3) -> bool:
+func check_for_snapping(player_id: int, mouse_world_pos: Vector3, delta: float = 0.0) -> bool:
 	"""Check if ghost should snap to nearby buildings and construction sites (magnetic behavior)"""
+	if not snap_controller:
+		return false
+
 	# Get both buildings AND construction sites
 	var buildings = get_tree().get_nodes_in_group("player_%d_buildings" % player_id)
 	var construction_sites = get_tree().get_nodes_in_group("player_%d_construction_sites" % player_id)
@@ -179,160 +237,36 @@ func check_for_snapping(player_id: int, mouse_world_pos: Vector3) -> bool:
 	var all_targets = buildings + construction_sites
 
 	if all_targets.is_empty():
-		is_snapping = false
-		snap_target = null
 		return false
 
-	# If already snapping, check if mouse moved far enough to unsnap (magnetic feel)
-	if is_snapping:
-		var distance_from_snap = mouse_world_pos.distance_to(snap_position)
-		if distance_from_snap > UNSNAP_DISTANCE:
-			is_snapping = false
-			snap_target = null
-			return false
-		# Still within unsnap threshold, keep snapping
+	# Update snapping using the controller
+	var snapped_position = snap_controller.update_snapping(
+		global_position,
+		building_size,
+		mouse_world_pos,
+		all_targets,
+		delta
+	)
+
+	# Get nearby snap points for visualization
+	nearby_snap_points = snap_controller.get_nearby_snap_points(
+		global_position,
+		building_size,
+		all_targets,
+		snap_controller.get_snap_distance() * 2.0
+	)
+
+	# Apply the snapped position
+	if snap_controller.is_currently_snapping():
+		global_position = snapped_position
 		return true
 
-	# Find the nearest edge-to-edge snap position
-	var best_snap_data = find_nearest_edge_snap(all_targets)
-
-	if not best_snap_data.is_empty():
-		snap_position = best_snap_data.position
-		snap_target = best_snap_data.target
-		is_snapping = true
-		return true
-	else:
-		is_snapping = false
-		snap_target = null
-		return false
-
-func get_building_size(building: Node) -> Vector3:
-	"""Get the size of a building or construction site"""
-	# Check if it's a construction site with building_size property
-	if "building_size" in building:
-		return building.building_size
-
-	# Try to find CollisionShape3D child
-	for child in building.get_children():
-		if child is CollisionShape3D:
-			var shape = child.shape
-			if shape is BoxShape3D:
-				return shape.size
-
-	# Fallback to default size if not found
-	return Vector3(4, 4, 4)
-
-func get_building_edges(center: Vector3, size: Vector3) -> Dictionary:
-	"""Get the 4 edges of a building in 2D (XZ plane)"""
-	var half_x = size.x / 2.0
-	var half_z = size.z / 2.0
-
-	return {
-		"north": {"pos": center.z + half_z, "min_x": center.x - half_x, "max_x": center.x + half_x, "axis": "z"},
-		"south": {"pos": center.z - half_z, "min_x": center.x - half_x, "max_x": center.x + half_x, "axis": "z"},
-		"east": {"pos": center.x + half_x, "min_z": center.z - half_z, "max_z": center.z + half_z, "axis": "x"},
-		"west": {"pos": center.x - half_x, "min_z": center.z - half_z, "max_z": center.z + half_z, "axis": "x"}
-	}
-
-func find_nearest_edge_snap(targets: Array) -> Dictionary:
-	"""Find the nearest edge-to-edge snap position among all targets"""
-	var ghost_half_x = building_size.x / 2.0
-	var ghost_half_z = building_size.z / 2.0
-	var best_snap_distance = SNAP_DISTANCE
-	var best_snap_position = null
-	var best_snap_target = null
-
-	for target in targets:
-		if not is_instance_valid(target):
-			continue
-
-		var target_size = get_building_size(target)
-		var target_edges = get_building_edges(target.global_position, target_size)
-
-		# Try snapping to each edge of the target building
-		# North edge of target (place ghost to the north, adjacent)
-		var snap_pos = try_snap_to_edge(target.global_position, target_size, "north", ghost_half_x, ghost_half_z)
-		if snap_pos:
-			var distance = global_position.distance_to(snap_pos)
-			if distance < best_snap_distance:
-				best_snap_distance = distance
-				best_snap_position = snap_pos
-				best_snap_target = target
-
-		# South edge of target (place ghost to the south, adjacent)
-		snap_pos = try_snap_to_edge(target.global_position, target_size, "south", ghost_half_x, ghost_half_z)
-		if snap_pos:
-			var distance = global_position.distance_to(snap_pos)
-			if distance < best_snap_distance:
-				best_snap_distance = distance
-				best_snap_position = snap_pos
-				best_snap_target = target
-
-		# East edge of target (place ghost to the east, adjacent)
-		snap_pos = try_snap_to_edge(target.global_position, target_size, "east", ghost_half_x, ghost_half_z)
-		if snap_pos:
-			var distance = global_position.distance_to(snap_pos)
-			if distance < best_snap_distance:
-				best_snap_distance = distance
-				best_snap_position = snap_pos
-				best_snap_target = target
-
-		# West edge of target (place ghost to the west, adjacent)
-		snap_pos = try_snap_to_edge(target.global_position, target_size, "west", ghost_half_x, ghost_half_z)
-		if snap_pos:
-			var distance = global_position.distance_to(snap_pos)
-			if distance < best_snap_distance:
-				best_snap_distance = distance
-				best_snap_position = snap_pos
-				best_snap_target = target
-
-	if best_snap_position != null:
-		return {"position": best_snap_position, "distance": best_snap_distance, "target": best_snap_target}
-	else:
-		return {}
-
-func try_snap_to_edge(target_pos: Vector3, target_size: Vector3, edge: String, ghost_half_x: float, ghost_half_z: float) -> Vector3:
-	"""Calculate snap position for placing ghost adjacent to a specific edge of target"""
-	var target_half_x = target_size.x / 2.0
-	var target_half_z = target_size.z / 2.0
-	var snap_pos = Vector3.ZERO
-
-	match edge:
-		"north":  # Place ghost to the north (positive Z)
-			snap_pos = Vector3(
-				target_pos.x,
-				global_position.y,
-				target_pos.z + target_half_z + ghost_half_z
-			)
-		"south":  # Place ghost to the south (negative Z)
-			snap_pos = Vector3(
-				target_pos.x,
-				global_position.y,
-				target_pos.z - target_half_z - ghost_half_z
-			)
-		"east":  # Place ghost to the east (positive X)
-			snap_pos = Vector3(
-				target_pos.x + target_half_x + ghost_half_x,
-				global_position.y,
-				target_pos.z
-			)
-		"west":  # Place ghost to the west (negative X)
-			snap_pos = Vector3(
-				target_pos.x - target_half_x - ghost_half_x,
-				global_position.y,
-				target_pos.z
-			)
-
-	# Snap to grid
-	snap_pos.x = round(snap_pos.x / SNAP_GRID_SIZE) * SNAP_GRID_SIZE
-	snap_pos.z = round(snap_pos.z / SNAP_GRID_SIZE) * SNAP_GRID_SIZE
-
-	return snap_pos
+	return false
 
 func apply_snapping():
-	"""Apply snapped position to ghost"""
-	if is_snapping:
-		global_position = snap_position
+	"""Apply snapped position to ghost (handled by snap controller now)"""
+	# This is now handled by the snap controller in check_for_snapping
+	pass
 
 func get_placement_data() -> Dictionary:
 	"""Get placement data for construction"""
