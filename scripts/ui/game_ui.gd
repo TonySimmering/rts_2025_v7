@@ -18,6 +18,10 @@ extends Control
 @onready var command_panel = $BottomBar/HBox/CommandPanel
 @onready var minimap_panel = $BottomBar/HBox/MinimapPanel
 
+# Loading screen
+@onready var loading_screen = $LoadingScreen
+@onready var loading_status_label = $LoadingScreen/CenterContainer/VBox/StatusLabel
+
 # Game timer
 var game_time: float = 0.0
 var timer_running: bool = false
@@ -30,11 +34,32 @@ func _ready():
 	# Initially hide until all players loaded
 	timer_running = false
 	update_timer()
+	# Show loading screen by default
+	show_loading_screen()
+
+func show_loading_screen(status: String = "Preparing game..."):
+	"""Show the loading screen with optional status text"""
+	if loading_screen:
+		loading_screen.visible = true
+		if loading_status_label:
+			loading_status_label.text = status
+
+func hide_loading_screen():
+	"""Hide the loading screen when game is ready"""
+	if loading_screen:
+		loading_screen.visible = false
+
+func update_loading_status(status: String):
+	"""Update the loading screen status text"""
+	if loading_status_label:
+		loading_status_label.text = status
 
 func start_timer():
 	"""Called when all players are fully loaded"""
 	timer_running = true
 	game_time = 0.0
+	# Hide loading screen when timer starts
+	hide_loading_screen()
 
 func _process(delta):
 	if timer_running:
