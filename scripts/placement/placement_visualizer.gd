@@ -149,8 +149,20 @@ func update_visualization(
 func _draw_snap_points(snap_points: Array, active_snap_point):
 	snap_points_mesh.clear_surfaces()
 
+	# Get active snap position if available
+	var active_pos = null
+	if active_snap_point != null:
+		if typeof(active_snap_point) == TYPE_DICTIONARY and active_snap_point.has("position"):
+			active_pos = active_snap_point.position
+		elif typeof(active_snap_point) == TYPE_OBJECT and "position" in active_snap_point:
+			active_pos = active_snap_point.position
+
 	for snap_point in snap_points:
-		var is_active = (snap_point == active_snap_point)
+		# Check if this snap point is the active one by comparing positions
+		var is_active = false
+		if active_pos != null and snap_point.position.distance_to(active_pos) < 0.1:
+			is_active = true
+
 		var point_size = SNAP_POINT_SIZE * (1.5 if is_active else 1.0)
 		var color = ACTIVE_SNAP_COLOR if is_active else SNAP_POINT_COLOR
 
@@ -164,10 +176,20 @@ func _draw_snap_line(ghost_position: Vector3, snap_point):
 	if snap_point == null:
 		return
 
+	# Get snap position safely
+	var snap_pos = null
+	if typeof(snap_point) == TYPE_DICTIONARY and snap_point.has("position"):
+		snap_pos = snap_point.position
+	elif typeof(snap_point) == TYPE_OBJECT and "position" in snap_point:
+		snap_pos = snap_point.position
+
+	if snap_pos == null:
+		return
+
 	# Draw line from ghost center to snap point
 	snap_line_mesh.surface_begin(Mesh.PRIMITIVE_LINES)
 	snap_line_mesh.surface_add_vertex(ghost_position + Vector3(0, 0.5, 0))  # Slightly above ground
-	snap_line_mesh.surface_add_vertex(snap_point.position + Vector3(0, 0.5, 0))
+	snap_line_mesh.surface_add_vertex(snap_pos + Vector3(0, 0.5, 0))
 	snap_line_mesh.surface_end()
 
 ## Draw grid overlay
@@ -193,10 +215,20 @@ func _draw_grid(grid_data: Dictionary):
 func _draw_connection_indicator(ghost_position: Vector3, snap_point):
 	connection_indicator_mesh.clear_surfaces()
 
-	if snap_point == null or not is_instance_valid(snap_point.target):
+	if snap_point == null:
 		return
 
-	var target_pos = snap_point.target.global_position
+	# Get target safely
+	var target = null
+	if typeof(snap_point) == TYPE_DICTIONARY and snap_point.has("target"):
+		target = snap_point.target
+	elif typeof(snap_point) == TYPE_OBJECT and "target" in snap_point:
+		target = snap_point.target
+
+	if target == null or not is_instance_valid(target):
+		return
+
+	var target_pos = target.global_position
 	var mid_point = (ghost_position + target_pos) / 2.0
 
 	# Draw a thicker line with arrows or connection symbol

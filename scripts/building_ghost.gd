@@ -41,9 +41,10 @@ func setup_placement_components():
 	snap_controller = BuildingSnapController.new()
 	snap_controller.set_smooth_snapping(true)
 
-	# Create grid manager
+	# Create grid manager (disabled by default for free-form placement)
 	grid_manager = GridManager.new(4.0)  # 4.0 grid size
-	grid_manager.set_grid_enabled(true)
+	grid_manager.set_grid_enabled(false)  # Disabled - free-form placement
+	grid_manager.set_grid_visible(false)  # No grid overlay
 
 	# Create visualizer
 	visualizer = PlacementVisualizer.new()
