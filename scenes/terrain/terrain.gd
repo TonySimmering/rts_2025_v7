@@ -38,6 +38,15 @@ extends Node3D
 @export_range(0.0, 1.0) var terrain_roughness: float = 1.0
 @export_range(0.0, 2.0) var normal_map_strength: float = 1.0
 
+@export_group("Stylized Shading")
+@export_range(1, 6) var stylized_toon_steps: int = 3
+@export_range(0.0, 1.0) var stylized_toon_smoothness: float = 0.25
+@export var stylized_ambient_color: Color = Color(0.45, 0.55, 0.65, 1.0)
+@export_range(0.0, 1.0) var stylized_ambient_intensity: float = 0.35
+@export var stylized_rim_color: Color = Color(0.9, 0.95, 1.0, 1.0)
+@export_range(0.0, 1.0) var stylized_rim_strength: float = 0.3
+@export_range(0.5, 8.0) var stylized_rim_power: float = 2.5
+
 @export_group("Resource Spawning")
 @export var spawn_resources: bool = true
 @export var num_gold_nodes: int = 8
@@ -425,14 +434,21 @@ func apply_terrain_material():
 				shader_material.set_shader_parameter("snow_normal", snow_norm)
 		
 		# Set shader parameters
-		shader_material.set_shader_parameter("texture_scale", texture_scale)
-		shader_material.set_shader_parameter("roughness", terrain_roughness)
-		shader_material.set_shader_parameter("normal_strength", normal_map_strength)
-		shader_material.set_shader_parameter("use_triplanar", use_triplanar_mapping)
-		shader_material.set_shader_parameter("use_vertex_blend", true)
-		
-		terrain_mesh_instance.set_surface_override_material(0, shader_material)
-		print("  Applied shader-based material with custom textures")
+                shader_material.set_shader_parameter("texture_scale", texture_scale)
+                shader_material.set_shader_parameter("roughness", terrain_roughness)
+                shader_material.set_shader_parameter("normal_strength", normal_map_strength)
+                shader_material.set_shader_parameter("use_triplanar", use_triplanar_mapping)
+                shader_material.set_shader_parameter("use_vertex_blend", true)
+                shader_material.set_shader_parameter("toon_steps", stylized_toon_steps)
+                shader_material.set_shader_parameter("toon_smoothness", stylized_toon_smoothness)
+                shader_material.set_shader_parameter("ambient_color", stylized_ambient_color)
+                shader_material.set_shader_parameter("ambient_intensity", stylized_ambient_intensity)
+                shader_material.set_shader_parameter("rim_color", stylized_rim_color)
+                shader_material.set_shader_parameter("rim_strength", stylized_rim_strength)
+                shader_material.set_shader_parameter("rim_power", stylized_rim_power)
+
+                terrain_mesh_instance.set_surface_override_material(0, shader_material)
+                print("  Applied shader-based material with custom textures")
 	else:
 		# Use simple vertex color material
 		apply_fallback_material()
