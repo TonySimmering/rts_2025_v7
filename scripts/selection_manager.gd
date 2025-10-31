@@ -137,18 +137,13 @@ func _issue_gather_command(resource_node: Node):
 
 	print("Gather command: ", selected_units.size(), " units → ", resource_type, " node")
 
+	var unit_paths: Array = []
 	for unit in selected_units:
-		if is_instance_valid(unit) and unit.is_multiplayer_authority():
-			# Check if unit can gather
-			if not unit.has_method("queue_command"):
-				continue
+		if is_instance_valid(unit):
+			unit_paths.append(unit.get_path())
 
-			var command = UnitCommand.new(UnitCommand.CommandType.GATHER)
-			command.target_entity = resource_node  # FIX: Use target_entity not target_resource
-			command.target_position = resource_node.global_position  # FIX: Add position for network sync
-
-			# Queue or replace based on shift key
-			unit.queue_command(command, queue_mode)
+	if not unit_paths.is_empty():
+		CommandManager.request_gather_command(unit_paths, resource_node.get_path(), queue_mode)
 
 func _issue_build_command(construction_site: Node):
 	"""Issue build command to selected units for a construction site"""
@@ -182,8 +177,14 @@ func _issue_build_command(construction_site: Node):
 		print("No workers selected to build")
 		return
 
-	# Assign workers to construction site
-	placement_manager.assign_workers_to_construction_site(construction_site, workers, queue_mode)
+	# Assign workers to construction site via command manager
+	var worker_paths: Array = []
+	for worker in workers:
+		if is_instance_valid(worker):
+			worker_paths.append(worker.get_path())
+
+	if not worker_paths.is_empty():
+		CommandManager.request_build_command(worker_paths, construction_site.get_path(), queue_mode)
 
 func _on_right_mouse_up():
 	if is_rotating_formation and selected_units.size() > 0:
@@ -235,16 +236,21 @@ func _issue_formation_move_command():
 	print("Move command (", queue_text, "): ", selected_units.size(), " units")
 	
 	# Create move commands for each unit
-	for i in range(selected_units.size()):
-		var unit = selected_units[i]
-		if is_instance_valid(unit) and unit.is_multiplayer_authority():
-			var command = UnitCommand.new(UnitCommand.CommandType.MOVE)
-			command.target_position = formation_positions[i]
-			command.facing_angle = facing_angle
-			
-			# Queue or replace based on shift key
-			unit.queue_command(command, queue_mode)
-	
+	var unit_paths: Array = []
+	for unit in selected_units:
+		if is_instance_valid(unit):
+			unit_paths.append(unit.get_path())
+
+	if not unit_paths.is_empty():
+		CommandManager.request_move_command(
+			unit_paths,
+			formation_positions,
+			facing_angle,
+			queue_mode,
+			formation_center,
+			use_flow_field
+		)
+
 	move_command_issued.emit(formation_center, selected_units)
 
 func _update_formation_rotation(mouse_pos: Vector2):

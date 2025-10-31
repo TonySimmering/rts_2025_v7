@@ -64,6 +64,7 @@ var noise: FastNoiseLite
 var heightmap: Array = []
 var terrain_seed: int = 0
 var vertex_colors: PackedColorArray = []
+var rng: RandomNumberGenerator = RandomNumberGenerator.new()
 
 # Track all flattened areas for persistent dirt texture
 # Each entry: {position: Vector3, radius: float, blend_padding: float}
@@ -76,6 +77,7 @@ func _ready():
 func generate_terrain(seed_value: int):
 	terrain_seed = seed_value
 	print("Generating terrain with seed: ", terrain_seed)
+	rng.seed = terrain_seed
 	setup_noise(terrain_seed)
 	generate_heightmap()
 	create_mesh()
@@ -563,8 +565,8 @@ func spawn_forests():
 		var placed = false
 		
 		while attempts < max_attempts:
-			var center_x = randf_range(forest_radius + 10, terrain_width - forest_radius - 10)
-			var center_z = randf_range(forest_radius + 10, terrain_depth - forest_radius - 10)
+			var center_x = rng.randf_range(forest_radius + 10, terrain_width - forest_radius - 10)
+			var center_z = rng.randf_range(forest_radius + 10, terrain_depth - forest_radius - 10)
 			
 			forest_center = Vector3(center_x, 0, center_z)
 			
@@ -591,7 +593,7 @@ func spawn_forests():
 	
 	for forest_idx in range(forest_centers.size()):
 		var center = forest_centers[forest_idx]
-		var num_trees = randi_range(trees_per_forest_min, trees_per_forest_max)
+		var num_trees = rng.randi_range(trees_per_forest_min, trees_per_forest_max)
 		
 		print("\n  Spawning forest ", forest_idx + 1, " with target of ", num_trees, " trees...")
 		
@@ -603,8 +605,8 @@ func spawn_forests():
 			var max_tree_attempts = 50
 			
 			while not placed and attempts < max_tree_attempts:
-				var distance = randf() * randf() * forest_radius
-				var angle = randf() * TAU
+				var distance = rng.randf() * rng.randf() * forest_radius
+				var angle = rng.randf() * TAU
 				
 				var tree_x = center.x + cos(angle) * distance
 				var tree_z = center.z + sin(angle) * distance
@@ -649,8 +651,8 @@ func spawn_resource(resource_type: int, index: int):
 	var resource_seed = terrain_seed + resource_type * 10000 + index * 100
 
 	for attempt in range(max_attempts):
-		var random_x = randf_range(10, terrain_width - 10)
-		var random_z = randf_range(10, terrain_depth - 10)
+		var random_x = rng.randf_range(10, terrain_width - 10)
+		var random_z = rng.randf_range(10, terrain_depth - 10)
 
 		var world_pos = Vector3(random_x, 0, random_z)
 		var height = get_height_at_position(world_pos)

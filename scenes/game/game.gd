@@ -23,6 +23,8 @@ func _ready():
 	print("Connected Players:", NetworkManager.players)
 	print("Game Seed:", NetworkManager.game_seed)
 
+	SimulationClock.start_clock()
+
 	spawn_local_camera()
 	setup_selection_system()
 	setup_building_placement_system()
@@ -214,6 +216,9 @@ func _process(_delta):
 		print("Returning to menu...")
 		NetworkManager.disconnect_from_game()
 		get_tree().change_scene_to_file("res://scenes/main_menu/main_menu.tscn")
+
+func _exit_tree() -> void:
+	SimulationClock.stop_clock()
 
 func _on_player_joined(peer_id: int, player_info: Dictionary):
 	print("Game scene notified: Player joined - ", peer_id)

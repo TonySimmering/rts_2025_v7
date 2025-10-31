@@ -7,9 +7,9 @@ extends Control
 @onready var status_label: Label = $StatusLabel
 
 func _ready():
-	ready_button.pressed.connect(_on_ready_pressed)
-	start_button.pressed.connect(_on_start_pressed)
-	back_button.pressed.connect(_on_back_pressed)
+        ready_button.pressed.connect(_on_ready_pressed)
+        start_button.pressed.connect(_on_start_pressed)
+        back_button.pressed.connect(_on_back_pressed)
 	
 	NetworkManager.player_connected.connect(_on_player_connected)
 	NetworkManager.player_disconnected.connect(_on_player_disconnected)
@@ -25,10 +25,13 @@ func _ready():
 	else:
 		status_label.text = "Players: " + str(NetworkManager.get_player_count()) + "/" + str(NetworkManager.MAX_CLIENTS)
 	
-	print("Lobby ready. Is server: ", multiplayer.is_server())
-	print("Initial players: ", NetworkManager.players)
-	
-	update_player_list()
+        print("Lobby ready. Is server: ", multiplayer.is_server())
+        print("Initial players: ", NetworkManager.players)
+
+        update_player_list()
+        _update_ready_button_label()
+        if multiplayer.is_server():
+                check_all_ready()
 
 func get_local_ip() -> String:
 	"""Get the local network IP address"""
@@ -43,19 +46,23 @@ func get_local_ip() -> String:
 	return "Unknown (check ipconfig/ifconfig)"
 
 func _on_ready_pressed():
-	var my_id = multiplayer.get_unique_id()
-	var is_ready = not NetworkManager.players[my_id].get("ready", false)
-	
-	print("Ready button pressed. My ID: ", my_id, " Setting ready to: ", is_ready)
-	
-	NetworkManager.players[my_id]["ready"] = is_ready
-	NetworkManager.rpc("set_player_ready", my_id, is_ready)
-	
-	ready_button.text = "Not Ready" if is_ready else "Ready"
-	update_player_list()
-	
-	if multiplayer.is_server():
-		check_all_ready()
+        var my_id = multiplayer.get_unique_id()
+        var is_ready = not NetworkManager.players[my_id].get("ready", false)
+
+        print("Ready button pressed. My ID: ", my_id, " Setting ready to: ", is_ready)
+
+        NetworkManager.players[my_id]["ready"] = is_ready
+        NetworkManager.rpc("set_player_ready", my_id, is_ready)
+
+        ready_button.disabled = true
+        update_player_list()
+
+        if multiplayer.is_server():
+                check_all_ready()
+
+        await get_tree().process_frame
+        _update_ready_button_label()
+        ready_button.disabled = false
 
 func _on_start_pressed():
 	print("Start button pressed!")
@@ -116,17 +123,27 @@ func _on_player_disconnected(peer_id: int):
 		check_all_ready()
 
 func _on_player_ready_changed(peer_id: int, is_ready: bool):
-	print("Lobby: Player ", peer_id, " ready changed to ", is_ready)
-	update_player_list()
-	if multiplayer.is_server():
-		check_all_ready()
+        print("Lobby: Player ", peer_id, " ready changed to ", is_ready)
+        update_player_list()
+        if multiplayer.is_server():
+                check_all_ready()
+
+        if peer_id == multiplayer.get_unique_id():
+                _update_ready_button_label()
 
 func check_all_ready():
-	var all_ready = NetworkManager.are_all_players_ready()
-	print("Checking if all ready: ", all_ready)
-	print("Current players state: ", NetworkManager.players)
-	start_button.disabled = not all_ready
-	print("Start button disabled: ", start_button.disabled)
+        var all_ready = NetworkManager.are_all_players_ready()
+        print("Checking if all ready: ", all_ready)
+        print("Current players state: ", NetworkManager.players)
+        start_button.disabled = not all_ready
+        print("Start button disabled: ", start_button.disabled)
+
+        if multiplayer.is_server():
+                var ready_count = 0
+                for player in NetworkManager.players.values():
+                        if player.get("ready", false):
+                                ready_count += 1
+                status_label.text = "Ready: " + str(ready_count) + "/" + str(NetworkManager.players.size())
 
 func update_player_list():
 	var text = "[b]Players in Lobby:[/b]\n\n"
@@ -139,5 +156,11 @@ func update_player_list():
 	
 	player_list.text = text
 	
-	if not multiplayer.is_server():
-		status_label.text = "Players: " + str(NetworkManager.get_player_count()) + "/" + str(NetworkManager.MAX_CLIENTS)
+        if not multiplayer.is_server():
+                status_label.text = "Players: " + str(NetworkManager.get_player_count()) + "/" + str(NetworkManager.MAX_CLIENTS)
+
+func _update_ready_button_label():
+        var my_id = multiplayer.get_unique_id()
+        var my_state = NetworkManager.players.get(my_id, {"ready": false})
+        var is_ready = my_state.get("ready", false)
+        ready_button.text = "Not Ready" if is_ready else "Ready"

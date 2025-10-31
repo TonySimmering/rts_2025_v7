@@ -13,7 +13,7 @@ const MAX_CLIENTS = 8
 var peer: ENetMultiplayerPeer
 var players: Dictionary = {}
 var pending_player_name: String = ""
-var game_seed: int = 0  # ADD THIS LINE
+var game_seed: int = 0
 
 
 func _ready():
@@ -85,17 +85,17 @@ func _on_server_disconnected():
 func register_player(player_info: Dictionary):
 	var sender_id = multiplayer.get_remote_sender_id()
 	var player_id = player_info.get("id", sender_id)
-	
+
 	print("Registering player ID: ", player_id, " Name: ", player_info.get("name", "Unknown"))
-	
+
 	players[player_id] = player_info
 	player_connected.emit(player_id, player_info)
-	
+
 	if multiplayer.is_server():
 		for peer_id in multiplayer.get_peers():
 			if peer_id != player_id:
 				rpc_id(peer_id, "register_player", player_info)
-		
+
 		for existing_id in players:
 			if existing_id != player_id:
 				rpc_id(player_id, "register_player", players[existing_id])
@@ -109,7 +109,7 @@ func set_player_ready(peer_id: int, is_ready: bool):
 
 func are_all_players_ready() -> bool:
 	for player in players.values():
-		if not player.ready:
+		if not player.get("ready", false):
 			return false
 	return players.size() > 0
 
@@ -118,8 +118,10 @@ func get_player_count() -> int:
 	
 func generate_game_seed() -> int:
 	"""Generate a random seed for the game (called by host)"""
-	randomize()
-	game_seed = randi()
+	var rng := RandomNumberGenerator.new()
+	var time_hash := hash("%s:%s" % [Time.get_ticks_usec(), multiplayer.get_unique_id()])
+	rng.seed = int(time_hash)
+	game_seed = rng.randi()
 	print("Generated game seed: ", game_seed)
 	return game_seed
 

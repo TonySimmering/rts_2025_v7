@@ -79,7 +79,11 @@ func _setup_procedural_rock():
 		rock_type = ProceduralRock.RockType.GOLD
 
 	# Generate rock with seed
-	var seed_value = resource_seed if resource_seed != 0 else randi()
+	var seed_value = resource_seed
+	if seed_value == 0:
+		var rng := RandomNumberGenerator.new()
+		rng.seed = int(NetworkManager.game_seed) ^ hash(name)
+		seed_value = rng.randi()
 	procedural_rock.generate_rock(rock_type, seed_value, 1.5)
 
 	# Replace the default MeshInstance3D with our procedural rock
