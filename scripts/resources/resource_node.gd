@@ -9,6 +9,7 @@ enum ResourceType {
 @export var resource_type: ResourceType = ResourceType.GOLD
 @export var starting_amount: int = 1000
 @export var gather_rate: int = 10  # Amount per gather cycle
+@export var resource_seed: int = 0  # Seed for procedural generation
 
 @onready var mesh_instance: MeshInstance3D = $MeshInstance3D
 @onready var collision_shape: CollisionShape3D = $CollisionShape3D
@@ -17,6 +18,7 @@ enum ResourceType {
 
 var current_amount: int = 0
 var gatherers: Array = []  # Workers currently gathering
+var procedural_rock: ProceduralRock = null  # Reference to procedural rock mesh
 
 # Visual settings per type
 const TYPE_COLORS = {
@@ -55,7 +57,7 @@ func setup_visuals():
 		cylinder_mesh.height = 4.0
 		mesh_instance.mesh = cylinder_mesh
 		mesh_instance.position.y = 2.0
-		
+
 		# Collision for tree
 		var shape = CylinderShape3D.new()
 		shape.radius = 0.4
@@ -63,22 +65,42 @@ func setup_visuals():
 		collision_shape.shape = shape
 		collision_shape.position.y = 2.0
 	else:
-		# Stone and Gold are smaller rocks/deposits
-		var box_mesh = BoxMesh.new()
-		box_mesh.size = Vector3(1.5, 1.0, 1.5)
-		mesh_instance.mesh = box_mesh
-		mesh_instance.position.y = 0.5
-		
-		# Collision for rocks
-		var shape = BoxShape3D.new()
-		shape.size = Vector3(1.5, 1.0, 1.5)
-		collision_shape.shape = shape
-		collision_shape.position.y = 0.5
-	
-	# Apply color based on type
-	var material = StandardMaterial3D.new()
-	material.albedo_color = TYPE_COLORS[resource_type]
-	mesh_instance.set_surface_override_material(0, material)
+		# Stone and Gold: Use procedural rock generation
+		_setup_procedural_rock()
+
+func _setup_procedural_rock():
+	"""Setup procedural rock mesh for stone and gold resources"""
+	# Create ProceduralRock instance
+	procedural_rock = ProceduralRock.new()
+
+	# Determine rock type
+	var rock_type = ProceduralRock.RockType.STONE
+	if resource_type == ResourceType.GOLD:
+		rock_type = ProceduralRock.RockType.GOLD
+
+	# Generate rock with seed
+	var seed_value = resource_seed if resource_seed != 0 else randi()
+	procedural_rock.generate_rock(rock_type, seed_value, 1.5)
+
+	# Replace the default MeshInstance3D with our procedural rock
+	if mesh_instance:
+		# Remove old mesh instance
+		var parent = mesh_instance.get_parent()
+		var old_position = mesh_instance.position
+		mesh_instance.queue_free()
+
+		# Add procedural rock
+		procedural_rock.name = "MeshInstance3D"
+		procedural_rock.position = Vector3(0, 0.5, 0)  # Center the rock
+		parent.add_child(procedural_rock)
+
+		# Update reference
+		mesh_instance = procedural_rock
+
+	# Setup collision shape using the procedural rock
+	var shape = procedural_rock.get_collision_shape()
+	collision_shape.shape = shape
+	collision_shape.position.y = 0.5
 
 func setup_navigation_obstacle():
 	"""Configure NavigationObstacle3D based on resource type"""
