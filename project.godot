@@ -19,6 +19,8 @@ config/icon="res://icon.svg"
 
 NetworkManager="*res://scripts/autoloads/network_manager.gd"
 ResourceManager="*res://scripts/autoloads/resource_manager.gd"
+CommandManager="*res://scripts/autoloads/command_manager.gd"
+SimulationClock="*res://scripts/autoloads/simulation_clock.gd"
 
 [input]
 

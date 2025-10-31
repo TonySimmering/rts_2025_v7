@@ -31,11 +31,14 @@ var selection_manager: Node = null
 var resource_manager: Node = null
 
 func _ready():
-	# Initially hide until all players loaded
-	timer_running = false
-	update_timer()
-	# Show loading screen by default
-	show_loading_screen()
+        # Initially hide until all players loaded
+        timer_running = false
+        update_timer()
+        # Show loading screen by default
+        show_loading_screen()
+        _connect_resource_signals()
+        _refresh_resource_labels()
+        call_deferred("_ensure_resource_bindings")
 
 func show_loading_screen(status: String = "Preparing game..."):
 	"""Show the loading screen with optional status text"""
@@ -62,33 +65,58 @@ func start_timer():
 	hide_loading_screen()
 
 func _process(delta):
-	if timer_running:
-		game_time += delta
-		update_timer()
-	
-	update_resources()
-	update_debug_info()
+        if timer_running:
+                game_time += delta
+                update_timer()
+
+        update_debug_info()
 
 func update_timer():
 	var minutes = int(game_time) / 60
 	var seconds = int(game_time) % 60
 	timer_label.text = "%02d:%02d" % [minutes, seconds]
 
-func update_resources():
-	if not resource_manager:
-		resource_manager = get_node_or_null("/root/ResourceManager")
-		return
+func _connect_resource_signals():
+        resource_manager = get_node_or_null("/root/ResourceManager")
+        if not resource_manager:
+                return
 
-	var player_id = multiplayer.get_unique_id()
-	var resources = resource_manager.get_player_resources(player_id)
+        if not resource_manager.resources_changed.is_connected(_on_resources_changed):
+                resource_manager.resources_changed.connect(_on_resources_changed)
+        if not resource_manager.population_changed.is_connected(_on_population_changed):
+                resource_manager.population_changed.connect(_on_population_changed)
 
-	gold_label.text = str(resources.get("gold", 0))
-	wood_label.text = str(resources.get("wood", 0))
-	stone_label.text = str(resources.get("stone", 0))
+func _refresh_resource_labels():
+        if not resource_manager:
+                resource_manager = get_node_or_null("/root/ResourceManager")
+        if not resource_manager:
+                return
 
-	# Update population
-	var population = resource_manager.get_population(player_id)
-	population_label.text = "%d/%d" % [population.get("used", 0), population.get("capacity", 0)]
+        var player_id = multiplayer.get_unique_id()
+        _on_resources_changed(player_id, resource_manager.get_player_resources(player_id))
+        var population = resource_manager.get_population(player_id)
+        _on_population_changed(player_id, population.get("used", 0), population.get("capacity", 0))
+
+func _on_resources_changed(player_id: int, resources: Dictionary):
+        if player_id != multiplayer.get_unique_id():
+                return
+
+        gold_label.text = str(resources.get("gold", 0))
+        wood_label.text = str(resources.get("wood", 0))
+        stone_label.text = str(resources.get("stone", 0))
+
+func _on_population_changed(player_id: int, used: int, capacity: int):
+        if player_id != multiplayer.get_unique_id():
+                return
+
+        population_label.text = "%d/%d" % [used, capacity]
+
+func _ensure_resource_bindings() -> void:
+        if resource_manager:
+                return
+        await get_tree().process_frame
+        _connect_resource_signals()
+        _refresh_resource_labels()
 
 func update_debug_info():
 	if not selection_manager:

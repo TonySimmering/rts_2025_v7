@@ -4,6 +4,8 @@ extends CharacterBody3D
 @export var player_id: int = 0
 @export var unit_id: int = 0
 
+const FlowField := preload("res://scripts/flow_field.gd")
+
 # References
 @onready var navigation_agent: NavigationAgent3D = $NavigationAgent3D
 @onready var selection_indicator: MeshInstance3D = $SelectionIndicator
@@ -58,12 +60,17 @@ var dropoff_search_timer: float = 0.0
 var target_construction_site: Node = null
 const BUILD_RANGE: float = 5.0
 
+# Flow field navigation
+var flow_field_active: bool = false
+var flow_field_data: Dictionary = {}
+var flow_field_goal: Vector3 = Vector3.ZERO
+
 func _ready():
 	add_to_group("units")
 	add_to_group("worker")
 	add_to_group("player_%d_units" % player_id)
 	
-	set_multiplayer_authority(player_id)
+        set_multiplayer_authority(1)
 	
 	print("\n=== WORKER UNIT READY ===")
 	print("Worker position: ", global_position)
@@ -194,8 +201,11 @@ func find_nearest_dropoff():
 # ============ STATE PROCESSING ============
 
 func process_movement(delta):
-	if navigation_agent.is_navigation_finished():
-		print("Navigation finished!")
+        if flow_field_active:
+                _apply_flow_field_guidance()
+
+        if navigation_agent.is_navigation_finished():
+                print("Navigation finished!")
 
 		# Check if we reached a resource for gathering
 		if current_command and current_command.type == UnitCommand.CommandType.GATHER:
@@ -220,17 +230,20 @@ func process_movement(delta):
 					play_animation("Idle")
 					return
 
-		state = UnitState.IDLE
-		velocity.x = 0
-		velocity.z = 0
+                state = UnitState.IDLE
+                velocity.x = 0
+                velocity.z = 0
 
-		if has_facing_target:
-			rotation.y = target_facing_angle
-			has_facing_target = false
-		
-		play_animation("Idle")
-		current_command = null
-		return
+                if has_facing_target:
+                        rotation.y = target_facing_angle
+                        has_facing_target = false
+
+                flow_field_active = false
+                flow_field_data.clear()
+
+                play_animation("Idle")
+                current_command = null
+                return
 	
 	# Periodic path recalculation for dynamic obstacle avoidance
 	path_recalc_timer += delta
@@ -387,20 +400,39 @@ func _attempt_stuck_recovery():
 
 		# After reaching recovery position, repath to original target
 		# We'll re-queue the original command after a brief pause
-	else:
-		print("  ⚠ No clear path found, trying random offset")
-		# Fallback to random offset if intelligent recovery fails
-		var random_offset = Vector3(
-			randf_range(-4, 4),
-			0,
-			randf_range(-4, 4)
-		)
-		var fallback_pos = NavigationServer3D.map_get_closest_point(
-			nav_map,
-			global_position + random_offset
-		)
-		navigation_agent.target_position = fallback_pos
-		stuck_timer = 0.0
+        else:
+                print("  ⚠ No clear path found, trying random offset")
+                # Fallback to deterministic random offset if intelligent recovery fails
+                var rng := SimulationClock.create_rng(player_id, "worker_recovery_%s" % name)
+                var random_offset = Vector3(
+                        rng.randf_range(-4, 4),
+                        0,
+                        rng.randf_range(-4, 4)
+                )
+                var fallback_pos = NavigationServer3D.map_get_closest_point(
+                        nav_map,
+                        global_position + random_offset
+                )
+                navigation_agent.target_position = fallback_pos
+                stuck_timer = 0.0
+
+func _apply_flow_field_guidance() -> void:
+        if flow_field_data.is_empty():
+                flow_field_active = false
+                return
+
+        var direction := FlowField.sample_flow_field(flow_field_data, global_position)
+        if direction == Vector3.ZERO:
+                return
+
+        var next_point := global_position + direction * FlowField.GRID_CELL_SIZE
+        var nav_map := get_world_3d().navigation_map
+        var snapped_point := NavigationServer3D.map_get_closest_point(nav_map, next_point)
+        navigation_agent.target_position = snapped_point
+
+        if global_position.distance_to(flow_field_goal) <= FlowField.GRID_CELL_SIZE * 1.5:
+                flow_field_active = false
+                flow_field_data.clear()
 
 func start_returning_to_dropoff():
 	"""Begin returning to Town Center with resources"""
@@ -501,15 +533,17 @@ func queue_command_rpc(command_data: Dictionary, append: bool):
 	if append:
 		command_queue.append(command)
 		print("📋 Queued command: ", command, " (queue size: ", command_queue.size(), ")")
-	else:
-		if state == UnitState.GATHERING and target_resource:
-			target_resource.stop_gathering(self)
-			target_resource = null
-		
-		command_queue.clear()
-		current_command = null
-		command_queue.append(command)
-		print("📋 New command: ", command)
+        else:
+                if state == UnitState.GATHERING and target_resource:
+                        target_resource.stop_gathering(self)
+                        target_resource = null
+
+                command_queue.clear()
+                current_command = null
+                flow_field_active = false
+                flow_field_data.clear()
+                command_queue.append(command)
+                print("📋 New command: ", command)
 
 func _execute_command(command: UnitCommand):
 	match command.type:
@@ -545,16 +579,27 @@ func _execute_move_command(command: UnitCommand):
 	
 	print("✓ Valid path with ", path.size(), " waypoints")
 	
-	navigation_agent.target_position = target_position
-	
-	target_facing_angle = facing_angle
-	has_facing_target = true
-	
-	stuck_timer = 0.0
-	check_timer = 0.0
-	last_check_position = global_position
-	
-	state = UnitState.MOVING
+        navigation_agent.target_position = target_position
+
+        target_facing_angle = facing_angle
+        has_facing_target = true
+
+        stuck_timer = 0.0
+        check_timer = 0.0
+        last_check_position = global_position
+
+        flow_field_active = command.metadata.has("flow_field") and not command.metadata["flow_field"].is_empty()
+        if flow_field_active:
+                flow_field_data.clear()
+                for entry in command.metadata["flow_field"]:
+                        var cell: Vector3 = entry.get("cell", Vector3.ZERO)
+                        var direction: Vector3 = entry.get("dir", Vector3.ZERO)
+                        flow_field_data[cell] = direction
+                flow_field_goal = command.metadata.get("flow_goal", target_position)
+        else:
+                flow_field_data.clear()
+
+        state = UnitState.MOVING
 
 func _execute_gather_command(command: UnitCommand):
 	# If we have target_entity, use it directly (local command)
