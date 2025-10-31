@@ -284,9 +284,9 @@ func create_construction_site_internal(placement_data: Dictionary, owner_player_
 			CommandManager.request_build_command(worker_paths, site.get_path(), queue_mode)
 
 func assign_workers_to_construction_site(site: Node, workers: Array, queue_mode: bool = false):
-	"""Helper function to assign workers to a specific construction site"""
-	if not site or not is_instance_valid(site):
-		return
+        """Helper function to assign workers to a specific construction site"""
+        if not site or not is_instance_valid(site):
+                return
 
 	var worker_paths: Array = []
 	for worker in workers:

@@ -17,35 +17,35 @@ var game_seed: int = 0
 
 
 func _ready():
-	multiplayer.peer_connected.connect(_on_player_connected)
-	multiplayer.peer_disconnected.connect(_on_player_disconnected)
-	multiplayer.connected_to_server.connect(_on_connected_to_server)
-	multiplayer.connection_failed.connect(_on_connection_failed)
-	multiplayer.server_disconnected.connect(_on_server_disconnected)
+        multiplayer.peer_connected.connect(_on_player_connected)
+        multiplayer.peer_disconnected.connect(_on_player_disconnected)
+        multiplayer.connected_to_server.connect(_on_connected_to_server)
+        multiplayer.connection_failed.connect(_on_connection_failed)
+        multiplayer.server_disconnected.connect(_on_server_disconnected)
 
 func host_game(player_name: String, port: int = DEFAULT_PORT) -> bool:
-	peer = ENetMultiplayerPeer.new()
-	var error = peer.create_server(port, MAX_CLIENTS)
-	if error != OK:
-		push_error("Failed to create server")
-		return false
-	multiplayer.multiplayer_peer = peer
-	var host_info = {"name": player_name, "id": 1, "ready": false}
-	players[1] = host_info
-	print("Server started on port ", port)
-	server_started.emit()
-	return true
+        peer = ENetMultiplayerPeer.new()
+        var error = peer.create_server(port, MAX_CLIENTS)
+        if error != OK:
+                push_error("Failed to create server")
+                return false
+        multiplayer.multiplayer_peer = peer
+        var host_info = {"name": player_name, "id": 1, "ready": false}
+        players[1] = host_info
+        print("Server started on port ", port)
+        server_started.emit()
+        return true
 
 func join_game(player_name: String, ip_address: String, port: int = DEFAULT_PORT) -> bool:
-	peer = ENetMultiplayerPeer.new()
-	var error = peer.create_client(ip_address, port)
-	if error != OK:
-		push_error("Failed to create client")
-		return false
-	multiplayer.multiplayer_peer = peer
-	pending_player_name = player_name
-	print("Attempting to connect to ", ip_address, ":", port)
-	return true
+        peer = ENetMultiplayerPeer.new()
+        var error = peer.create_client(ip_address, port)
+        if error != OK:
+                push_error("Failed to create client")
+                return false
+        multiplayer.multiplayer_peer = peer
+        pending_player_name = player_name
+        print("Attempting to connect to ", ip_address, ":", port)
+        return true
 
 func disconnect_from_game():
 	if peer:
@@ -54,32 +54,32 @@ func disconnect_from_game():
 	multiplayer.multiplayer_peer = null
 
 func _on_player_connected(id: int):
-	print("Player connected: ", id)
-	if multiplayer.is_server():
-		rpc_id(id, "register_player", players[1])
+        print("Player connected: ", id)
+        if multiplayer.is_server():
+                rpc_id(id, "register_player", players[1])
 
 func _on_player_disconnected(id: int):
-	print("Player disconnected: ", id)
-	if players.has(id):
-		players.erase(id)
-	player_disconnected.emit(id)
+        print("Player disconnected: ", id)
+        if players.has(id):
+                players.erase(id)
+        player_disconnected.emit(id)
 
 func _on_connected_to_server():
-	print("Successfully connected to server")
-	var my_id = multiplayer.get_unique_id()
-	var my_info = {"name": pending_player_name, "id": my_id, "ready": false}
-	players[my_id] = my_info
-	rpc_id(1, "register_player", my_info)
-	connection_succeeded.emit()
+        print("Successfully connected to server")
+        var my_id = multiplayer.get_unique_id()
+        var my_info = {"name": pending_player_name, "id": my_id, "ready": false}
+        players[my_id] = my_info
+        rpc_id(1, "register_player", my_info)
+        connection_succeeded.emit()
 
 func _on_connection_failed():
-	print("Connection failed")
-	peer = null
-	connection_failed.emit()
+        print("Connection failed")
+        peer = null
+        connection_failed.emit()
 
 func _on_server_disconnected():
-	print("Server disconnected")
-	disconnect_from_game()
+        print("Server disconnected")
+        disconnect_from_game()
 
 @rpc("any_peer", "reliable")
 func register_player(player_info: Dictionary):
@@ -102,10 +102,10 @@ func register_player(player_info: Dictionary):
 
 @rpc("any_peer", "call_local", "reliable")
 func set_player_ready(peer_id: int, is_ready: bool):
-	if players.has(peer_id):
-		players[peer_id]["ready"] = is_ready
-		print("Player ", peer_id, " ready status: ", is_ready)
-		player_ready_changed.emit(peer_id, is_ready)
+        if players.has(peer_id):
+                players[peer_id]["ready"] = is_ready
+                print("Player ", peer_id, " ready status: ", is_ready)
+                player_ready_changed.emit(peer_id, is_ready)
 
 func are_all_players_ready() -> bool:
 	for player in players.values():

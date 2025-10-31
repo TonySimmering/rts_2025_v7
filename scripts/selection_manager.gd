@@ -131,11 +131,9 @@ func _on_right_mouse_down(mouse_pos: Vector2):
 		formation_rotation = 0.0
 
 func _issue_gather_command(resource_node: Node):
-	"""Issue gather command to selected units"""
-	var queue_mode = Input.is_key_pressed(KEY_SHIFT)
-	var resource_type = resource_node.get_resource_type_string()
-
-	print("Gather command: ", selected_units.size(), " units → ", resource_type, " node")
+        """Issue gather command to selected units"""
+        var queue_mode = Input.is_key_pressed(KEY_SHIFT)
+        var resource_type = resource_node.get_resource_type_string()
 
 	var unit_paths: Array = []
 	for unit in selected_units:

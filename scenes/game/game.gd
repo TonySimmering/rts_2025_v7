@@ -212,10 +212,13 @@ func generate_terrain_with_seed():
 		push_error("Terrain node not found!")
 
 func _process(_delta):
-	if Input.is_action_just_pressed("ui_cancel"):
-		print("Returning to menu...")
-		NetworkManager.disconnect_from_game()
-		get_tree().change_scene_to_file("res://scenes/main_menu/main_menu.tscn")
+        if Input.is_action_just_pressed("ui_cancel"):
+                print("Returning to menu...")
+                NetworkManager.disconnect_from_game()
+                get_tree().change_scene_to_file("res://scenes/main_menu/main_menu.tscn")
+
+func _exit_tree() -> void:
+        SimulationClock.stop_clock()
 
 func _exit_tree() -> void:
 	SimulationClock.stop_clock()

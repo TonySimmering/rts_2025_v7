@@ -230,9 +230,9 @@ func process_movement(delta):
 					play_animation("Idle")
 					return
 
-		state = UnitState.IDLE
-		velocity.x = 0
-		velocity.z = 0
+                state = UnitState.IDLE
+                velocity.x = 0
+                velocity.z = 0
 
 		if has_facing_target:
 			rotation.y = target_facing_angle
