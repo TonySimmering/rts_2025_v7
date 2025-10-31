@@ -637,30 +637,36 @@ func spawn_forests():
 	print("--- FOREST GENERATION COMPLETE ---")
 
 func spawn_tree_at_position(position: Vector3, index: int):
-	spawn_resource_rpc.rpc(1, position, index)
+	# Trees use their index as seed
+	var tree_seed = terrain_seed + index * 1000 + 500  # Offset to differentiate from rocks
+	spawn_resource_rpc.rpc(1, position, index, tree_seed)
 
 func spawn_resource(resource_type: int, index: int):
-	"""Spawn a single resource node (gold/stone)"""
+	"""Spawn a single resource node (gold/stone) with unique seed"""
 	var max_attempts = 50
-	
+
+	# Generate unique seed for this resource based on terrain seed, type, and index
+	var resource_seed = terrain_seed + resource_type * 10000 + index * 100
+
 	for attempt in range(max_attempts):
 		var random_x = randf_range(10, terrain_width - 10)
 		var random_z = randf_range(10, terrain_depth - 10)
-		
+
 		var world_pos = Vector3(random_x, 0, random_z)
 		var height = get_height_at_position(world_pos)
 		world_pos.y = height
-		
-		spawn_resource_rpc.rpc(resource_type, world_pos, index)
+
+		spawn_resource_rpc.rpc(resource_type, world_pos, index, resource_seed)
 		return
-	
+
 	push_warning("Failed to spawn resource after ", max_attempts, " attempts")
 
 @rpc("authority", "call_local", "reliable")
-func spawn_resource_rpc(resource_type: int, position: Vector3, index: int):
-	"""Spawn a resource node on all clients"""
+func spawn_resource_rpc(resource_type: int, position: Vector3, index: int, seed_value: int):
+	"""Spawn a resource node on all clients with procedural generation seed"""
 	var resource_node = RESOURCE_NODE_SCENE.instantiate()
 	resource_node.global_position = position
 	resource_node.resource_type = resource_type
+	resource_node.resource_seed = seed_value  # Pass seed for procedural generation
 	resource_node.name = "Resource_%d_%d" % [resource_type, index]
 	add_child(resource_node)
