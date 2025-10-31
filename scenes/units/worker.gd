@@ -12,9 +12,10 @@ extends CharacterBody3D
 # Movement
 @export var move_speed: float = 3
 @export var gravity: float = 20.0
-@export var stuck_check_interval: float = 2.0
-@export var stuck_distance_threshold: float = 1.0
-@export var max_stuck_time: float = 6.0
+@export var stuck_check_interval: float = 0.5  # Check more frequently
+@export var stuck_distance_threshold: float = 0.5  # More sensitive detection
+@export var max_stuck_time: float = 2.0  # Faster recovery
+@export var path_recalc_interval: float = 2.0  # Periodic path updates
 
 var is_selected: bool = false
 var current_animation: String = "Idle"
@@ -32,6 +33,9 @@ var has_facing_target: bool = false
 var last_check_position: Vector3 = Vector3.ZERO
 var stuck_timer: float = 0.0
 var check_timer: float = 0.0
+var path_recalc_timer: float = 0.0
+var stuck_recovery_attempts: int = 0
+const MAX_RECOVERY_ATTEMPTS: int = 3
 
 # State
 enum UnitState { IDLE, MOVING, GATHERING, RETURNING, DEPOSITING, BUILDING }
@@ -86,18 +90,25 @@ func setup_agent():
 	await get_tree().physics_frame
 	await get_tree().physics_frame
 	await get_tree().physics_frame
-	
+
 	navigation_agent.avoidance_enabled = true
 	navigation_agent.radius = 0.5
 	navigation_agent.max_neighbors = 10
 	navigation_agent.time_horizon_agents = 1.0
+	navigation_agent.time_horizon_obstacles = 1.5  # More time to avoid obstacles
 	navigation_agent.max_speed = move_speed
-	
+
+	# Configure avoidance layers to avoid buildings and resources (layer 1)
+	navigation_agent.set_avoidance_layer_value(2, true)  # Units are on layer 2
+	navigation_agent.set_avoidance_mask_value(1, true)   # Avoid layer 1 (buildings/resources)
+	navigation_agent.set_avoidance_mask_value(2, true)   # Avoid layer 2 (other units)
+
 	navigation_agent.velocity_computed.connect(_on_velocity_computed)
-	
+
 	print("NavigationAgent setup:")
 	print("  Map RID valid: ", navigation_agent.get_navigation_map().is_valid())
 	print("  Agent avoidance enabled: ", navigation_agent.avoidance_enabled)
+	print("  Avoiding obstacle layers: 1 (buildings/resources), 2 (units)")
 
 func _on_velocity_computed(safe_velocity: Vector3):
 	velocity.x = safe_velocity.x
@@ -221,34 +232,32 @@ func process_movement(delta):
 		current_command = null
 		return
 	
-	# Stuck detection
+	# Periodic path recalculation for dynamic obstacle avoidance
+	path_recalc_timer += delta
+	if path_recalc_timer >= path_recalc_interval:
+		path_recalc_timer = 0.0
+		# Recalculate path to handle moved obstacles or new buildings
+		var current_target = navigation_agent.target_position
+		navigation_agent.target_position = current_target  # Triggers recalc
+
+	# Enhanced stuck detection with faster response
 	check_timer += delta
 	if check_timer >= stuck_check_interval:
 		check_timer = 0.0
-		
+
 		var distance_moved = global_position.distance_to(last_check_position)
 		var distance_to_target = global_position.distance_to(navigation_agent.target_position)
-		
+
 		if distance_moved < stuck_distance_threshold and distance_to_target > 2.0:
 			stuck_timer += stuck_check_interval
-			
+
 			if stuck_timer >= max_stuck_time:
-				print("⚠ Unit stuck! Trying alternative path...")
-				
-				var nav_map = get_world_3d().navigation_map
-				var nearby_target = navigation_agent.target_position + Vector3(
-					randf_range(-3, 3),
-					0,
-					randf_range(-3, 3)
-				)
-				var closest = NavigationServer3D.map_get_closest_point(nav_map, nearby_target)
-				
-				print("  Retargeting to nearby position: ", closest)
-				navigation_agent.target_position = closest
-				stuck_timer = 0.0
+				print("⚠ Unit stuck! Attempting intelligent recovery...")
+				_attempt_stuck_recovery()
 		else:
 			stuck_timer = 0.0
-		
+			stuck_recovery_attempts = 0
+
 		last_check_position = global_position
 	
 	var next_position = navigation_agent.get_next_path_position()
@@ -310,6 +319,88 @@ func process_gathering(delta):
 				print("Cannot gather, resource depleted")
 				target_resource.stop_gathering(self)
 				start_returning_to_dropoff()
+
+func _attempt_stuck_recovery():
+	"""Intelligently attempt to recover from being stuck by trying multiple directions"""
+	stuck_recovery_attempts += 1
+
+	if stuck_recovery_attempts > MAX_RECOVERY_ATTEMPTS:
+		print("  ✗ Max recovery attempts reached, giving up")
+		state = UnitState.IDLE
+		current_command = null
+		stuck_timer = 0.0
+		stuck_recovery_attempts = 0
+		return
+
+	var nav_map = get_world_3d().navigation_map
+	var original_target = navigation_agent.target_position
+	var direction_to_target = (original_target - global_position).normalized()
+
+	# Try multiple probe directions around the obstacle
+	var probe_directions = [
+		direction_to_target.rotated(Vector3.UP, PI / 4),      # 45° right
+		direction_to_target.rotated(Vector3.UP, -PI / 4),     # 45° left
+		direction_to_target.rotated(Vector3.UP, PI / 2),      # 90° right
+		direction_to_target.rotated(Vector3.UP, -PI / 2),     # 90° left
+		-direction_to_target,                                  # Backwards
+	]
+
+	var probe_distance = 3.0  # Distance to probe for clear space
+	var best_position: Vector3 = Vector3.ZERO
+	var best_score: float = -INF
+
+	# Use physics raycast to find clear direction
+	var space_state = get_world_3d().direct_space_state
+
+	for probe_dir in probe_directions:
+		var probe_target = global_position + probe_dir * probe_distance
+
+		# Raycast to check if path is clear
+		var query = PhysicsRayQueryParameters3D.create(
+			global_position + Vector3(0, 0.5, 0),  # Slightly above ground
+			probe_target + Vector3(0, 0.5, 0)
+		)
+		query.collision_mask = 12  # Check buildings (layer 4) and resources (layer 3)
+		query.exclude = [self]
+
+		var raycast_result = space_state.intersect_ray(query)
+
+		# If raycast is clear, check if position is on navmesh
+		if not raycast_result:
+			var navmesh_pos = NavigationServer3D.map_get_closest_point(nav_map, probe_target)
+
+			# Score based on distance to navmesh point and progress toward target
+			var navmesh_distance = probe_target.distance_to(navmesh_pos)
+			var progress_to_target = navmesh_pos.distance_to(original_target)
+
+			if navmesh_distance < 2.0:  # Position is reasonably close to navmesh
+				var score = -progress_to_target - navmesh_distance * 2.0
+				if score > best_score:
+					best_score = score
+					best_position = navmesh_pos
+
+	# Apply best recovery position
+	if best_position != Vector3.ZERO:
+		print("  ✓ Found recovery path at attempt ", stuck_recovery_attempts)
+		navigation_agent.target_position = best_position
+		stuck_timer = 0.0
+
+		# After reaching recovery position, repath to original target
+		# We'll re-queue the original command after a brief pause
+	else:
+		print("  ⚠ No clear path found, trying random offset")
+		# Fallback to random offset if intelligent recovery fails
+		var random_offset = Vector3(
+			randf_range(-4, 4),
+			0,
+			randf_range(-4, 4)
+		)
+		var fallback_pos = NavigationServer3D.map_get_closest_point(
+			nav_map,
+			global_position + random_offset
+		)
+		navigation_agent.target_position = fallback_pos
+		stuck_timer = 0.0
 
 func start_returning_to_dropoff():
 	"""Begin returning to Town Center with resources"""

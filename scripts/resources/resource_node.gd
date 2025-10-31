@@ -84,10 +84,10 @@ func setup_navigation_obstacle():
 	"""Configure NavigationObstacle3D based on resource type"""
 	if not nav_obstacle:
 		return
-	
+
 	# Wait for navigation system to be ready
 	await get_tree().physics_frame
-	
+
 	if resource_type == ResourceType.WOOD:
 		# Trees: tall cylinder
 		nav_obstacle.radius = 0.5  # Slightly larger than visual for clearance
@@ -98,14 +98,18 @@ func setup_navigation_obstacle():
 		nav_obstacle.radius = 1.0  # Approximate radius for 1.5x1.5 box
 		nav_obstacle.height = 1.0
 		nav_obstacle.position.y = 0.5  # Center of box
-	
-	# Disable dynamic avoidance for static resources
-	# Resources should rely on physical collision only
-	# NavigationObstacle3D avoidance is for moving obstacles
-	nav_obstacle.avoidance_enabled = false
-	nav_obstacle.use_3d_avoidance = false
 
-	print("  Resource collision configured for ", TYPE_NAMES[resource_type], " - radius: ", nav_obstacle.radius, ", height: ", nav_obstacle.height)
+	# Enable navigation avoidance for better pathfinding
+	# This allows units to see and plan around resources in advance
+	# Physical collision still provides hard barriers
+	nav_obstacle.avoidance_enabled = true
+	nav_obstacle.use_3d_avoidance = true
+
+	# Configure avoidance layers
+	# Resources are on avoidance layer 1, same as buildings
+	nav_obstacle.set_avoidance_layer_value(1, true)
+
+	print("  Resource navigation obstacle configured for ", TYPE_NAMES[resource_type], " - radius: ", nav_obstacle.radius, ", height: ", nav_obstacle.height)
 
 func can_gather() -> bool:
 	return current_amount > 0

@@ -220,13 +220,15 @@ func _issue_formation_move_command():
 		current_formation,
 		facing_angle
 	)
-	
-	# Validate positions against NavMesh
-	var nav_map = get_tree().root.get_world_3d().navigation_map
-	for i in range(formation_positions.size()):
-		var original_pos = formation_positions[i]
-		var valid_pos = NavigationServer3D.map_get_closest_point(nav_map, original_pos)
-		formation_positions[i] = valid_pos
+
+	# Validate positions against NavMesh AND physical obstacles
+	var world = get_tree().root.get_world_3d()
+	var nav_map = world.navigation_map
+	formation_positions = FormationManager.validate_and_adjust_positions(
+		formation_positions,
+		world,
+		nav_map
+	)
 	
 	# Debug
 	var queue_text = "QUEUED" if queue_mode else "NEW"
