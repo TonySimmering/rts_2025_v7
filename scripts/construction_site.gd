@@ -91,10 +91,16 @@ func setup_navigation_obstacle():
 	nav_obstacle.height = building_size.y
 	nav_obstacle.position.y = building_size.y / 2.0
 
-	# Disable dynamic avoidance for construction sites
-	# They should rely on physical collision only
-	nav_obstacle.avoidance_enabled = false
-	nav_obstacle.use_3d_avoidance = false
+	# Enable navigation avoidance for better pathfinding
+	# This allows units to see and plan around construction sites in advance
+	# Physical collision still provides hard barriers
+	nav_obstacle.avoidance_enabled = true
+	nav_obstacle.use_3d_avoidance = true
+
+	# Configure avoidance layers (same as buildings)
+	nav_obstacle.set_avoidance_layer_value(1, true)
+
+	print("  Construction site navigation obstacle configured - radius: ", nav_obstacle.radius, ", height: ", nav_obstacle.height)
 
 func calculate_build_rate() -> float:
 	"""Calculate build rate based on number of workers with diminishing returns"""
