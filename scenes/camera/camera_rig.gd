@@ -15,8 +15,8 @@ extends Node3D
 # Zoom settings
 @export var zoom_speed: float = 1.5
 @export var min_zoom_distance: float = 1
-@export var max_zoom_distance: float = 17
-@export var min_pitch: float = -20.0  # looking more horizontal
+@export var max_zoom_distance: float = 15
+@export var min_pitch: float = -10.0  # looking more horizontal
 @export var max_pitch: float = -70.0  # looking more vertical
 
 # Map boundaries (will set these later)
