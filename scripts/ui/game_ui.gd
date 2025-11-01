@@ -9,6 +9,7 @@ extends Control
 @onready var gold_label = $TopBar/HBox/ResourcePanel/Resources/GoldRow/Value
 @onready var wood_label = $TopBar/HBox/ResourcePanel/Resources/WoodRow/Value
 @onready var stone_label = $TopBar/HBox/ResourcePanel/Resources/StoneRow/Value
+@onready var food_label = $TopBar/HBox/ResourcePanel/Resources/FoodRow/Value
 @onready var population_label = $TopBar/HBox/ResourcePanel/Resources/PopulationRow/Value
 @onready var timer_label = $TopBar/HBox/TimerPanel/Time
 @onready var menu_button = $TopBar/HBox/MenuButton
@@ -85,6 +86,7 @@ func update_resources():
 	gold_label.text = str(resources.get("gold", 0))
 	wood_label.text = str(resources.get("wood", 0))
 	stone_label.text = str(resources.get("stone", 0))
+	food_label.text = str(resources.get("food", 0))
 
 	# Update population
 	var population = resource_manager.get_population(player_id)

@@ -4,7 +4,7 @@ signal resources_changed(player_id: int, resources: Dictionary)
 signal population_changed(player_id: int, used: int, capacity: int)
 
 # Resource storage per player
-var player_resources: Dictionary = {}  # player_id -> { gold: 0, wood: 0, stone: 0 }
+var player_resources: Dictionary = {}  # player_id -> { gold: 0, wood: 0, stone: 0, food: 0 }
 
 # Population storage per player
 var player_population_capacity: Dictionary = {}  # player_id -> capacity
@@ -14,6 +14,7 @@ var player_population_used: Dictionary = {}  # player_id -> used
 const STARTING_GOLD = 500
 const STARTING_WOOD = 200
 const STARTING_STONE = 200
+const STARTING_FOOD = 0
 const STARTING_POPULATION_CAPACITY = 10  # From Town Center
 
 func _ready():
@@ -29,7 +30,8 @@ func initialize_player_resources(player_id: int):
 		player_resources[player_id] = {
 			"gold": STARTING_GOLD,
 			"wood": STARTING_WOOD,
-			"stone": STARTING_STONE
+			"stone": STARTING_STONE,
+			"food": STARTING_FOOD
 		}
 		print("Initialized resources for player ", player_id, ": ", player_resources[player_id])
 		resources_changed.emit(player_id, player_resources[player_id])
@@ -65,7 +67,7 @@ func sync_resources(player_id: int, resources: Dictionary):
 func get_player_resources(player_id: int) -> Dictionary:
 	"""Get resource dictionary for a player"""
 	if not player_resources.has(player_id):
-		return {"gold": 0, "wood": 0, "stone": 0}
+		return {"gold": 0, "wood": 0, "stone": 0, "food": 0}
 	return player_resources[player_id]
 
 func can_afford(player_id: int, cost: Dictionary) -> bool:

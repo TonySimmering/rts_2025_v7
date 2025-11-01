@@ -528,22 +528,25 @@ func spawn_resource_nodes():
 	if not multiplayer.is_server():
 		print("⚠ Not server, skipping resource spawn")
 		return
-	
+
 	print("\n=== SPAWNING RESOURCES ===")
 	print("Is Server: ", multiplayer.is_server())
-	
+
 	spawn_forests()
-	
+
 	print("\nSpawning gold nodes: ", num_gold_nodes)
 	for i in range(num_gold_nodes):
 		spawn_resource(0, i)
-	
+
 	print("Spawning stone nodes: ", num_stone_nodes)
 	for i in range(num_stone_nodes):
 		spawn_resource(2, i)
-	
+
+	# Spawn berry bushes near each player start
+	spawn_berry_bushes_near_players()
+
 	await get_tree().create_timer(0.5).timeout
-	
+
 	print("✓ Resource spawning complete!")
 	print("Total resources in scene: ", get_tree().get_nodes_in_group("resource_nodes").size())
 	print("=========================\n")
@@ -640,6 +643,70 @@ func spawn_tree_at_position(position: Vector3, index: int):
 	# Trees use their index as seed
 	var tree_seed = terrain_seed + index * 1000 + 500  # Offset to differentiate from rocks
 	spawn_resource_rpc.rpc(1, position, index, tree_seed)
+
+func spawn_berry_bushes_near_players():
+	"""Spawn 3 berry bushes near each player's starting position"""
+	print("\n--- SPAWNING BERRY BUSHES ---")
+
+	var map_size = Vector2(terrain_width, terrain_depth)
+	var berry_index = 0
+
+	# Get all player IDs and spawn berries near each
+	var player_ids = NetworkManager.players.keys()
+	player_ids.sort()
+
+	for player_id in player_ids:
+		print("Spawning berries for player ", player_id)
+
+		# Calculate player spawn position (same logic as spawn_manager)
+		var spawn_pos = get_player_spawn_position(player_id, map_size)
+
+		# Spawn 3 berry bushes in a small radius around the spawn
+		for i in range(3):
+			var angle = (float(i) / 3.0) * TAU
+			var distance = randf_range(10.0, 15.0)  # 10-15 units from spawn
+
+			var berry_x = spawn_pos.x + cos(angle) * distance
+			var berry_z = spawn_pos.z + sin(angle) * distance
+
+			# Clamp to terrain bounds
+			berry_x = clamp(berry_x, 5, terrain_width - 5)
+			berry_z = clamp(berry_z, 5, terrain_depth - 5)
+
+			var berry_pos = Vector3(berry_x, 0, berry_z)
+			var height = get_height_at_position(berry_pos)
+			berry_pos.y = height
+
+			# Generate unique seed for this berry
+			var berry_seed = terrain_seed + 30000 + player_id * 100 + i
+
+			spawn_resource_rpc.rpc(3, berry_pos, berry_index, berry_seed)  # 3 = FOOD
+			berry_index += 1
+			print("  ✓ Berry bush ", i + 1, " spawned at ", berry_pos)
+
+	print("--- BERRY BUSH SPAWNING COMPLETE ---\n")
+
+func get_player_spawn_position(player_id: int, map_size: Vector2) -> Vector3:
+	"""Get spawn position for a player (same logic as spawn_manager)"""
+	var spawn_positions = [
+		Vector3(map_size.x * 0.2, 0, map_size.y * 0.2),  # Bottom-left
+		Vector3(map_size.x * 0.8, 0, map_size.y * 0.8),  # Top-right
+		Vector3(map_size.x * 0.8, 0, map_size.y * 0.2),  # Bottom-right
+		Vector3(map_size.x * 0.2, 0, map_size.y * 0.8),  # Top-left
+	]
+
+	var player_ids = NetworkManager.players.keys()
+	player_ids.sort()
+
+	var index = player_ids.find(player_id)
+	if index == -1:
+		index = 0
+
+	index = index % spawn_positions.size()
+	var spawn_pos = spawn_positions[index]
+	spawn_pos.y = get_height_at_position(spawn_pos)
+
+	return spawn_pos
 
 func spawn_resource(resource_type: int, index: int):
 	"""Spawn a single resource node (gold/stone) with unique seed"""

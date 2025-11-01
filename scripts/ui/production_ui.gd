@@ -2,7 +2,7 @@ extends PanelContainer
 
 # References
 @onready var building_name_label: Label = $VBoxContainer/BuildingName
-@onready var production_queue_container: VBoxContainer = $VBoxContainer/ProductionQueue
+@onready var production_queue_container: HBoxContainer = $VBoxContainer/ProductionQueue
 @onready var buttons_container: VBoxContainer = $VBoxContainer/Buttons
 @onready var train_worker_button: Button = $VBoxContainer/Buttons/TrainWorkerButton
 
@@ -126,10 +126,10 @@ func update_production_queue():
 	for i in range(queue_size):
 		var queue_item = selected_building.production_queue[i]
 		var progress = queue_item.progress / queue_item.total_time
-		
-		# Create container for this queue item
+
+		# Create container for this queue item (vertical within horizontal queue)
 		var item_container = VBoxContainer.new()
-		item_container.custom_minimum_size = Vector2(0, 50)
+		item_container.custom_minimum_size = Vector2(120, 0)
 		
 		# Unit name and progress text
 		var item_label = Label.new()
@@ -146,7 +146,7 @@ func update_production_queue():
 			progress_bar.max_value = 1.0
 			progress_bar.value = progress
 			progress_bar.show_percentage = true
-			progress_bar.custom_minimum_size = Vector2(200, 20)
+			progress_bar.custom_minimum_size = Vector2(100, 20)
 			item_container.add_child(progress_bar)
 		
 		production_queue_container.add_child(item_container)

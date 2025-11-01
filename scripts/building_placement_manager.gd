@@ -54,6 +54,9 @@ func _input(event):
 		elif event.keycode == KEY_K:
 			rotate_ghost(PI/4)  # +45 degrees
 			get_viewport().set_input_as_handled()
+		elif event.keycode == KEY_TAB:
+			toggle_snapping()  # Toggle snapping with TAB key
+			get_viewport().set_input_as_handled()
 
 	# Handle right-click to exit placement mode
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_RIGHT and event.pressed:
@@ -157,6 +160,11 @@ func rotate_ghost(angle_delta: float):
 		# Re-validate after rotation
 		if terrain:
 			current_ghost.update_position(current_ghost.global_position, terrain)
+
+func toggle_snapping():
+	"""Toggle magnetic snapping on/off"""
+	if current_ghost:
+		current_ghost.toggle_snapping()
 
 func place_building(queue_mode: bool = false):
 	"""Place the building and create construction site"""

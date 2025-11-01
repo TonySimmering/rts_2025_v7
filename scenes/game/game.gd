@@ -167,26 +167,33 @@ func spawn_town_centers_and_units():
 	"""Spawn Town Centers and starting units (server only)"""
 	if not multiplayer.is_server():
 		return
-	
+
 	await get_tree().create_timer(0.5).timeout
-	
+
 	# First spawn Town Centers
 	await spawn_manager.spawn_town_centers()
-	
+
 	# Wait for Town Centers to be ready
 	await get_tree().create_timer(0.3).timeout
-	
+
 	# Then spawn workers around Town Centers
 	var terrain = get_node_or_null("Terrain")
 	var map_size = Vector2(128, 128)
-	
+
 	for player_id in NetworkManager.players:
 		var spawn_center = spawn_manager.get_spawn_location_for_player(player_id, map_size)
 		spawn_manager.spawn_starting_units(player_id, spawn_center)
-	
+
 	# Start game timer after spawning complete
 	await get_tree().create_timer(0.5).timeout
-	_on_all_players_loaded()
+	start_game_for_all_players.rpc()
+
+@rpc("authority", "call_local", "reliable")
+func start_game_for_all_players():
+	"""Called on all clients when spawning is complete"""
+	if game_ui:
+		game_ui.start_timer()
+		print("Game timer started for player ", multiplayer.get_unique_id())
 
 func _on_all_players_loaded():
 	"""Called when all players have spawned and are ready"""

@@ -497,15 +497,22 @@ func queue_command(command: UnitCommand, append: bool = false):
 @rpc("any_peer", "call_local", "reliable")
 func queue_command_rpc(command_data: Dictionary, append: bool):
 	var command = UnitCommand.from_dict(command_data)
-	
+
 	if append:
 		command_queue.append(command)
 		print("📋 Queued command: ", command, " (queue size: ", command_queue.size(), ")")
 	else:
+		# Clean up current state when replacing commands
 		if state == UnitState.GATHERING and target_resource:
 			target_resource.stop_gathering(self)
 			target_resource = null
-		
+
+		# Clean up building state when reassigned
+		if state == UnitState.BUILDING and target_construction_site:
+			if is_instance_valid(target_construction_site) and target_construction_site.has_method("remove_builder"):
+				target_construction_site.remove_builder(self)
+			target_construction_site = null
+
 		command_queue.clear()
 		current_command = null
 		command_queue.append(command)

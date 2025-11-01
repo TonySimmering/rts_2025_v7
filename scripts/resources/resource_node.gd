@@ -3,7 +3,8 @@ extends StaticBody3D
 enum ResourceType {
 	GOLD,
 	WOOD,
-	STONE
+	STONE,
+	FOOD
 }
 
 @export var resource_type: ResourceType = ResourceType.GOLD
@@ -24,13 +25,15 @@ var procedural_rock: ProceduralRock = null  # Reference to procedural rock mesh
 const TYPE_COLORS = {
 	ResourceType.GOLD: Color(1.0, 0.84, 0.0),      # Gold
 	ResourceType.WOOD: Color(0.55, 0.27, 0.07),    # Brown
-	ResourceType.STONE: Color(0.5, 0.5, 0.5)       # Gray
+	ResourceType.STONE: Color(0.5, 0.5, 0.5),      # Gray
+	ResourceType.FOOD: Color(0.8, 0.2, 0.3)        # Red/Berry color
 }
 
 const TYPE_NAMES = {
 	ResourceType.GOLD: "Gold",
 	ResourceType.WOOD: "Wood",
-	ResourceType.STONE: "Stone"
+	ResourceType.STONE: "Stone",
+	ResourceType.FOOD: "Food"
 }
 
 func _ready():
@@ -64,6 +67,24 @@ func setup_visuals():
 		shape.height = 4.0
 		collision_shape.shape = shape
 		collision_shape.position.y = 2.0
+	elif resource_type == ResourceType.FOOD:
+		# Berry bush - sphere with berry color
+		var sphere_mesh = SphereMesh.new()
+		sphere_mesh.radius = 0.6
+		sphere_mesh.height = 1.2
+		mesh_instance.mesh = sphere_mesh
+		mesh_instance.position.y = 0.6
+
+		# Create material with berry color
+		var material = StandardMaterial3D.new()
+		material.albedo_color = TYPE_COLORS[ResourceType.FOOD]
+		mesh_instance.set_surface_override_material(0, material)
+
+		# Collision for berry bush
+		var shape = SphereShape3D.new()
+		shape.radius = 0.6
+		collision_shape.shape = shape
+		collision_shape.position.y = 0.6
 	else:
 		# Stone and Gold: Use procedural rock generation
 		_setup_procedural_rock()
@@ -115,6 +136,11 @@ func setup_navigation_obstacle():
 		nav_obstacle.radius = 0.5  # Slightly larger than visual for clearance
 		nav_obstacle.height = 4.0
 		nav_obstacle.position.y = 2.0  # Center of cylinder
+	elif resource_type == ResourceType.FOOD:
+		# Berry bush: small sphere
+		nav_obstacle.radius = 0.7  # Slightly larger than visual for clearance
+		nav_obstacle.height = 1.2
+		nav_obstacle.position.y = 0.6  # Center of sphere
 	else:
 		# Stone/Gold: box-like
 		nav_obstacle.radius = 1.0  # Approximate radius for 1.5x1.5 box
