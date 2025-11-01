@@ -47,6 +47,10 @@ func set_building_placement_manager(manager: BuildingPlacementManager):
 	"""Set reference to building placement manager"""
 	building_placement_manager = manager
 
+	# Connect to placement mode signals
+	if building_placement_manager:
+		building_placement_manager.placement_mode_ended.connect(_on_placement_mode_ended)
+
 func show_units(units: Array):
 	"""Display UI for the given units"""
 	if not units or units.is_empty():
@@ -157,11 +161,17 @@ func start_building_placement(building_type: String):
 
 	building_placement_manager.start_placement_mode(building_type, workers)
 
-	# Hide command UI during placement
+	# Hide command UI during placement (but keep selected_units for restoration)
 	# It will show again when placement ends
-	hide_ui()
+	visible = false
 
 func _process(_delta):
 	# Update button affordability continuously
 	if visible and selected_units.size() > 0:
 		update_buttons()
+
+func _on_placement_mode_ended():
+	"""Called when placement mode ends - restore UI if units still selected"""
+	# Show the UI again if we have selected workers
+	if selected_units.size() > 0:
+		show_units(selected_units)

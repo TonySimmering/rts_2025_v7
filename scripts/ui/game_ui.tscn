@@ -88,6 +88,21 @@ theme_override_font_sizes/font_size = 20
 text = "0"
 vertical_alignment = 1
 
+[node name="FoodRow" type="HBoxContainer" parent="TopBar/HBox/ResourcePanel/Resources"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Icon" type="Label" parent="TopBar/HBox/ResourcePanel/Resources/FoodRow"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 24
+text = "🍓"
+
+[node name="Value" type="Label" parent="TopBar/HBox/ResourcePanel/Resources/FoodRow"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+text = "0"
+vertical_alignment = 1
+
 [node name="PopulationRow" type="HBoxContainer" parent="TopBar/HBox/ResourcePanel/Resources"]
 layout_mode = 2
 theme_override_constants/separation = 8

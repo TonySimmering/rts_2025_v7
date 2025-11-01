@@ -8,6 +8,7 @@ var building_type: String = ""
 var building_size: Vector3 = Vector3(4, 4, 4)
 var rotation_angle: float = 0.0  # Y-axis rotation in radians
 var is_valid_placement: bool = false
+var snapping_enabled: bool = true  # Toggle for magnetic snapping
 
 # Placement validation
 const MAX_TERRAIN_SLOPE: float = 0.3  # Maximum slope angle for building
@@ -225,9 +226,24 @@ func rotate_building(angle_delta: float):
 	rotation_angle += angle_delta
 	rotation.y = rotation_angle
 
+func toggle_snapping():
+	"""Toggle magnetic snapping on/off"""
+	snapping_enabled = not snapping_enabled
+	print("Snapping ", "ENABLED" if snapping_enabled else "DISABLED")
+
+	# Force unsnap if we're disabling snapping
+	if not snapping_enabled and snap_controller:
+		snap_controller.force_unsnap()
+
+func set_snapping_enabled(enabled: bool):
+	"""Set snapping enabled state"""
+	snapping_enabled = enabled
+	if not enabled and snap_controller:
+		snap_controller.force_unsnap()
+
 func check_for_snapping(player_id: int, mouse_world_pos: Vector3, delta: float = 0.0) -> bool:
 	"""Check if ghost should snap to nearby buildings and construction sites (magnetic behavior)"""
-	if not snap_controller:
+	if not snap_controller or not snapping_enabled:
 		return false
 
 	# Get both buildings AND construction sites
