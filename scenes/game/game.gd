@@ -254,7 +254,8 @@ func setup_fog_of_war():
 
 func _process(_delta):
 	# Update fog of war
-	FogOfWarManager.update_visibility()
+	if FogOfWarManager:
+		FogOfWarManager.update_visibility()
 
 	if Input.is_action_just_pressed("ui_cancel"):
 		print("Returning to menu...")

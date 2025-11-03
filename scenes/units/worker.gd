@@ -773,6 +773,11 @@ func get_vision_range() -> float:
 
 func _update_fog_visibility() -> void:
 	"""Update unit visibility based on fog of war"""
+	# Safety check for FogOfWarManager
+	if not FogOfWarManager:
+		visible = true
+		return
+
 	var local_player_id = multiplayer.get_unique_id()
 
 	# Always visible to own player

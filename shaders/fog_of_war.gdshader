@@ -1,5 +1,5 @@
 shader_type spatial;
-render_mode blend_mix, depth_draw_opaque, cull_back, unshaded;
+render_mode blend_mix, depth_draw_never, cull_back, unshaded;
 
 // Visibility texture - R channel contains visibility data
 // 0 = unexplored (black), 127 = explored (grey), 255 = visible (transparent)

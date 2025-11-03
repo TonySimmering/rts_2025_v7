@@ -37,6 +37,9 @@ func _create_fog_mesh() -> void:
 func _create_fog_material() -> void:
 	# Load the fog of war shader
 	var shader = load("res://shaders/fog_of_war.gdshader")
+	if not shader:
+		push_error("Failed to load fog of war shader")
+		return
 
 	# Create shader material
 	fog_material = ShaderMaterial.new()
@@ -58,8 +61,8 @@ func _create_fog_material() -> void:
 	# Apply material
 	material_override = fog_material
 
-	# Set transparency flags
-	transparency = 1.0  # Enable transparency
+	# Enable transparency rendering
+	cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 
 
 func _process(delta: float) -> void:
@@ -76,10 +79,19 @@ func _update_visibility_texture() -> void:
 	if not FogOfWarManager:
 		return
 
+	if not visibility_texture:
+		return
+
 	# Get visibility data from fog of war manager
 	var visibility_data = FogOfWarManager.get_visibility_data(player_id)
 
 	if visibility_data.size() == 0:
+		return
+
+	# Verify data size matches expected size
+	var expected_size = map_width * map_height
+	if visibility_data.size() != expected_size:
+		push_error("Fog of War: Visibility data size mismatch. Expected %d, got %d" % [expected_size, visibility_data.size()])
 		return
 
 	# Create image from visibility data
