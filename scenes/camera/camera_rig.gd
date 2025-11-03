@@ -219,14 +219,18 @@ func update_smart_dof(delta):
 	current_blur_amount = lerp(current_blur_amount, target_blur_amount, dof_smoothing * delta)
 
 	# Apply to camera attributes (Godot 4.5+)
+	# Note: CameraAttributesPractical uses a single dof_blur_amount for both near and far
 	camera_attributes.dof_blur_far_enabled = current_blur_amount > 0.01
 	camera_attributes.dof_blur_near_enabled = current_blur_amount > 0.01
 
 	if current_blur_amount > 0.01:
+		# Set distances and transitions
 		camera_attributes.dof_blur_far_distance = current_focus_distance
-		camera_attributes.dof_blur_far_amount = current_blur_amount * dof_max_blur_far
 		camera_attributes.dof_blur_far_transition = 5.0  # Smooth transition
 
 		camera_attributes.dof_blur_near_distance = current_focus_distance * 0.5
-		camera_attributes.dof_blur_near_amount = current_blur_amount * dof_max_blur_near
 		camera_attributes.dof_blur_near_transition = 2.0
+
+		# CameraAttributesPractical uses single blur amount property
+		# Use the far blur amount as it's typically more visible
+		camera_attributes.dof_blur_amount = current_blur_amount * dof_max_blur_far
