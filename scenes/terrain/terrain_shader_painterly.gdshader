@@ -1,4 +1,5 @@
 shader_type spatial;
+render_mode diffuse_lambert, specular_disabled;
 
 // Texture inputs
 uniform sampler2D grass_texture : source_color;
@@ -48,11 +49,6 @@ void vertex() {
 	// Calculate view direction in world space
 	vec3 camera_pos = INV_VIEW_MATRIX[3].xyz;
 	view_dir = normalize(camera_pos - world_position);
-
-	// Outline effect (expand vertices along normals in view space)
-	if (use_outline) {
-		VERTEX += NORMAL * outline_thickness;
-	}
 }
 
 // Triplanar mapping function
@@ -85,15 +81,6 @@ float toon_lighting(float diffuse, int levels, float smoothness) {
 }
 
 void fragment() {
-	// If using outline, render outline color
-	if (use_outline && !FRONT_FACING) {
-		ALBEDO = outline_color;
-		ROUGHNESS = 1.0;
-		METALLIC = 0.0;
-		SPECULAR = 0.0;
-		return;
-	}
-
 	vec4 grass_color;
 	vec4 dirt_color;
 	vec4 rock_color;
@@ -134,6 +121,10 @@ void fragment() {
 	vec4 blend = COLOR;
 
 	// Blend textures based on vertex colors
+	// R channel = grass weight
+	// G channel = dirt weight
+	// B channel = rock weight
+	// A channel = snow weight
 	vec4 final_color = grass_color * blend.r +
 	                   dirt_color * blend.g +
 	                   rock_color * blend.b +
@@ -149,37 +140,38 @@ void fragment() {
 	final_normal = final_normal * 2.0 - 1.0;
 	final_normal = normalize(final_normal);
 
-	// Apply toon shading if enabled
+	// Calculate rim lighting (Fresnel effect) if toon shading enabled
+	vec3 final_albedo = final_color.rgb;
 	if (use_toon_shading) {
-		// Calculate basic diffuse lighting
-		vec3 light_dir = normalize(LIGHT);
-		float diffuse = max(dot(world_normal, light_dir), 0.0);
+		float rim = 1.0 - max(dot(view_dir, world_normal), 0.0);
+		rim = pow(rim, rim_light_power);
+		vec3 rim_contribution = rim_light_color * rim * rim_light_intensity;
+		final_albedo += rim_contribution;
+	}
+
+	// Apply to fragment
+	ALBEDO = final_albedo;
+	ROUGHNESS = 1.0 - roughness;  // Invert for proper rendering
+	METALLIC = 0.0;
+	SPECULAR = 0.0;
+	NORMAL_MAP = final_normal * normal_strength;
+}
+
+// Custom light function for toon shading effect
+void light() {
+	if (use_toon_shading) {
+		// Calculate diffuse lighting
+		float NdotL = dot(NORMAL, LIGHT);
+		float diffuse = max(NdotL, 0.0);
 
 		// Apply toon quantization
 		float toon_diffuse = toon_lighting(diffuse, toon_levels, toon_smoothness);
 
-		// Calculate rim lighting (Fresnel effect)
-		float rim = 1.0 - max(dot(view_dir, world_normal), 0.0);
-		rim = pow(rim, rim_light_power);
-		vec3 rim_contribution = rim_light_color * rim * rim_light_intensity;
-
-		// Apply toon lighting to color
-		vec3 toon_color = final_color.rgb * toon_diffuse;
-
-		// Add rim lighting
-		toon_color += rim_contribution;
-
-		// Ensure we don't go completely black
-		toon_color = max(toon_color, final_color.rgb * 0.2);
-
-		ALBEDO = toon_color;
+		// Apply the toon-shaded lighting
+		DIFFUSE_LIGHT += ALBEDO * LIGHT_COLOR * ATTENUATION * toon_diffuse;
 	} else {
-		ALBEDO = final_color.rgb;
+		// Standard diffuse lighting (Lambert)
+		float NdotL = dot(NORMAL, LIGHT);
+		DIFFUSE_LIGHT += ALBEDO * LIGHT_COLOR * ATTENUATION * max(NdotL, 0.0);
 	}
-
-	// Apply material properties
-	ROUGHNESS = roughness;
-	METALLIC = 0.0;
-	SPECULAR = 0.0;
-	NORMAL_MAP = final_normal * normal_strength;
 }

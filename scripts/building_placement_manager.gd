@@ -147,8 +147,8 @@ func update_ghost_position(mouse_pos: Vector2, delta: float = 0.0):
 		var world_pos = result.position
 
 		# Check for snapping to nearby buildings (magnetic behavior)
-		if current_ghost.check_for_snapping(player_id, world_pos, delta):
-			# Position already applied by snap controller
+		if current_ghost.check_for_snapping(player_id, world_pos, delta, terrain):
+			# Position already applied by snap controller (with terrain clamping)
 			pass
 		else:
 			current_ghost.update_position(world_pos, terrain)
