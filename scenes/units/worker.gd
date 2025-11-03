@@ -3,6 +3,7 @@ extends CharacterBody3D
 # Network sync
 @export var player_id: int = 0
 @export var unit_id: int = 0
+@export var vision_range: float = 10.0  # Fog of war vision range
 
 # References
 @onready var navigation_agent: NavigationAgent3D = $NavigationAgent3D
@@ -118,7 +119,10 @@ func _on_velocity_computed(safe_velocity: Vector3):
 func _physics_process(delta):
 	if not is_on_floor():
 		velocity.y -= gravity * delta
-	
+
+	# Fog of war visibility check
+	_update_fog_visibility()
+
 	# Process dropoff search
 	if multiplayer.is_server():
 		dropoff_search_timer += delta
@@ -758,3 +762,30 @@ func get_carried_amount() -> int:
 	for amount in carrying_resources.values():
 		total += amount
 	return total
+
+# ============ FOG OF WAR ============
+
+func get_player_id() -> int:
+	return player_id
+
+func get_vision_range() -> float:
+	return vision_range
+
+func _update_fog_visibility() -> void:
+	"""Update unit visibility based on fog of war"""
+	var local_player_id = multiplayer.get_unique_id()
+
+	# Always visible to own player
+	if player_id == local_player_id:
+		visible = true
+		return
+
+	# Check if enemy unit is visible through fog of war
+	var is_visible_to_player = FogOfWarManager.is_visible(
+		local_player_id,
+		global_position.x,
+		global_position.z
+	)
+
+	# Hide enemy units in fog, show if visible
+	visible = is_visible_to_player

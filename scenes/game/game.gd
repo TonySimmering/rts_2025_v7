@@ -15,6 +15,7 @@ var production_ui: Control = null
 var game_ui: Control = null
 var command_panel_ui: Control = null
 var building_placement_manager: BuildingPlacementManager = null
+var fog_of_war_overlay: MeshInstance3D = null
 
 func _ready():
 	print("=== GAME SCENE LOADED ===")
@@ -28,6 +29,7 @@ func _ready():
 	setup_building_placement_system()
 	setup_production_ui()
 	await generate_terrain_with_seed()
+	setup_fog_of_war()
 	setup_spawn_system()
 	focus_camera_on_player_start()
 	spawn_town_centers_and_units()
@@ -221,7 +223,34 @@ func generate_terrain_with_seed():
 	else:
 		push_error("Terrain node not found!")
 
+func setup_fog_of_war():
+	"""Initialize fog of war system"""
+	# Set map dimensions
+	var terrain = get_node_or_null("Terrain")
+	if terrain:
+		FogOfWarManager.set_map_dimensions(128, 128)
+
+	# Initialize fog for all players
+	for player_id in NetworkManager.players:
+		FogOfWarManager.initialize_player(player_id)
+
+	# Create fog overlay for local player
+	var local_player_id = multiplayer.get_unique_id()
+	fog_of_war_overlay = MeshInstance3D.new()
+	fog_of_war_overlay.set_script(load("res://scripts/fog_of_war_overlay.gd"))
+	fog_of_war_overlay.name = "FogOfWarOverlay"
+	add_child(fog_of_war_overlay)
+
+	# Configure fog overlay
+	fog_of_war_overlay.set_player_id(local_player_id)
+	fog_of_war_overlay.set_map_dimensions(128, 128)
+
+	print("Fog of War initialized for player ", local_player_id)
+
 func _process(_delta):
+	# Update fog of war
+	FogOfWarManager.update_visibility()
+
 	if Input.is_action_just_pressed("ui_cancel"):
 		print("Returning to menu...")
 		NetworkManager.disconnect_from_game()

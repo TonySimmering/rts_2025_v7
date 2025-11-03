@@ -19,6 +19,7 @@ config/icon="res://icon.svg"
 
 NetworkManager="*res://scripts/autoloads/network_manager.gd"
 ResourceManager="*res://scripts/autoloads/resource_manager.gd"
+FogOfWarManager="*res://scripts/autoloads/fog_of_war_manager.gd"
 
 [input]
 

@@ -41,6 +41,10 @@ func _ready():
 
 	print("Building ready: ", building_name, " | Player: ", player_id, " | ID: ", building_id)
 
+func _process(_delta):
+	"""Update fog of war visibility"""
+	_update_fog_visibility()
+
 func setup_collision():
 	"""Configure collision layers for buildings"""
 	collision_layer = 8  # Layer 4 (bit 3) - buildings
@@ -148,3 +152,31 @@ func can_dropoff_resources() -> bool:
 func get_rally_point() -> Vector3:
 	"""Get rally point for produced units (override in subclasses)"""
 	return global_position + Vector3(5, 0, 0)
+
+# ============ FOG OF WAR ============
+
+func get_player_id() -> int:
+	return player_id
+
+func get_vision_range() -> float:
+	return vision_range
+
+func _update_fog_visibility() -> void:
+	"""Update building visibility based on fog of war"""
+	var local_player_id = multiplayer.get_unique_id()
+
+	# Always visible to own player
+	if player_id == local_player_id:
+		visible = true
+		return
+
+	# Check if enemy building is in explored or visible area
+	var visibility_state = FogOfWarManager.get_visibility_at(
+		local_player_id,
+		global_position.x,
+		global_position.z
+	)
+
+	# Show buildings in explored and visible areas (not in black fog)
+	# This matches RTS convention where buildings remain visible once discovered
+	visible = visibility_state != FogOfWarManager.VisibilityState.UNEXPLORED
