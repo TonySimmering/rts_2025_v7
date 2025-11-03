@@ -19,6 +19,7 @@ extends Node3D
 @export_group("Texture Settings")
 @export var use_procedural_textures: bool = true
 @export var use_texture_files: bool = false  # Toggle for custom textures
+@export var use_painterly_shader: bool = true  # Use stylized/painterly shader
 @export var grass_texture_path: String = ""
 @export var dirt_texture_path: String = ""
 @export var rock_texture_path: String = ""
@@ -37,6 +38,14 @@ extends Node3D
 @export var use_triplanar_mapping: bool = true  # Better for steep slopes
 @export_range(0.0, 1.0) var terrain_roughness: float = 1.0
 @export_range(0.0, 2.0) var normal_map_strength: float = 1.0
+
+@export_group("Painterly Shader Settings")
+@export var toon_shading_enabled: bool = true
+@export_range(2, 8) var toon_levels: int = 4  # Number of discrete lighting bands
+@export_range(0.0, 0.5) var toon_smoothness: float = 0.05
+@export_range(0.0, 8.0) var rim_light_power: float = 3.0
+@export var rim_light_color: Color = Color(0.9, 0.95, 1.0)
+@export_range(0.0, 2.0) var rim_light_intensity: float = 0.3
 
 @export_group("Resource Spawning")
 @export var spawn_resources: bool = true
@@ -378,14 +387,15 @@ func apply_terrain_material():
 	if use_texture_files:
 		# Use shader-based material with custom textures
 		var shader_material = ShaderMaterial.new()
-		
-		# Load shader
-		var shader = load("res://scenes/terrain/terrain_shader.gdshader")
+
+		# Load shader (painterly or standard)
+		var shader_path = "res://scenes/terrain/terrain_shader_painterly.gdshader" if use_painterly_shader else "res://scenes/terrain/terrain_shader.gdshader"
+		var shader = load(shader_path)
 		if not shader:
-			push_error("Failed to load terrain_shader.gdshader! Using fallback material.")
+			push_error("Failed to load shader at %s! Using fallback material." % shader_path)
 			apply_fallback_material()
 			return
-		
+
 		shader_material.shader = shader
 		
 		# Load and set textures
@@ -430,9 +440,19 @@ func apply_terrain_material():
 		shader_material.set_shader_parameter("normal_strength", normal_map_strength)
 		shader_material.set_shader_parameter("use_triplanar", use_triplanar_mapping)
 		shader_material.set_shader_parameter("use_vertex_blend", true)
-		
+
+		# Set painterly shader parameters if using painterly shader
+		if use_painterly_shader:
+			shader_material.set_shader_parameter("use_toon_shading", toon_shading_enabled)
+			shader_material.set_shader_parameter("toon_levels", toon_levels)
+			shader_material.set_shader_parameter("toon_smoothness", toon_smoothness)
+			shader_material.set_shader_parameter("rim_light_power", rim_light_power)
+			shader_material.set_shader_parameter("rim_light_color", rim_light_color)
+			shader_material.set_shader_parameter("rim_light_intensity", rim_light_intensity)
+
 		terrain_mesh_instance.set_surface_override_material(0, shader_material)
-		print("  Applied shader-based material with custom textures")
+		var shader_type = "painterly" if use_painterly_shader else "standard"
+		print("  Applied %s shader-based material with custom textures" % shader_type)
 	else:
 		# Use simple vertex color material
 		apply_fallback_material()
