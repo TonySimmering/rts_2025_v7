@@ -128,6 +128,11 @@ func update_position(world_position: Vector3, terrain: Node):
 	if grid_manager and not snap_controller.is_currently_snapping():
 		final_position = grid_manager.snap_to_grid(world_position, building_size)
 
+	# ALWAYS clamp Y position to terrain height to prevent floating
+	if terrain:
+		var terrain_height = terrain.get_height_at_position(final_position)
+		final_position.y = terrain_height
+
 	global_position = final_position
 
 	# Check placement validity
@@ -241,7 +246,7 @@ func set_snapping_enabled(enabled: bool):
 	if not enabled and snap_controller:
 		snap_controller.force_unsnap()
 
-func check_for_snapping(player_id: int, mouse_world_pos: Vector3, delta: float = 0.0) -> bool:
+func check_for_snapping(player_id: int, mouse_world_pos: Vector3, delta: float = 0.0, terrain: Node = null) -> bool:
 	"""Check if ghost should snap to nearby buildings and construction sites (magnetic behavior)"""
 	if not snap_controller or not snapping_enabled:
 		return false
@@ -275,6 +280,10 @@ func check_for_snapping(player_id: int, mouse_world_pos: Vector3, delta: float =
 
 	# Apply the snapped position
 	if snap_controller.is_currently_snapping():
+		# ALWAYS clamp Y position to terrain height to prevent floating
+		if terrain:
+			var terrain_height = terrain.get_height_at_position(snapped_position)
+			snapped_position.y = terrain_height
 		global_position = snapped_position
 		return true
 
