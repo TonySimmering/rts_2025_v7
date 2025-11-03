@@ -52,6 +52,11 @@ func spawn_local_camera():
 	if terrain:
 		local_camera.set_terrain(terrain)
 
+	# Set environment for smart DOF system
+	var world_env = get_node_or_null("WorldEnvironment")
+	if world_env and world_env.environment:
+		local_camera.set_environment(world_env.environment)
+
 	print("Local camera spawned for player ", multiplayer.get_unique_id())
 
 func focus_camera_on_player_start():

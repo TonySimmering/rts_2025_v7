@@ -31,7 +31,23 @@ extends Node3D
 @export var terrain_offset: float = 1
 @export var height_smoothing: float = 5.0
 
+# Smart DOF settings
+@export var dof_enabled: bool = true
+@export var dof_transition_angle: float = -30.0  # Angle (degrees) where DOF starts transitioning
+@export var dof_max_angle: float = -10.0  # Angle (degrees) where DOF is maximum
+@export var dof_max_blur_far: float = 0.15  # Maximum far blur when horizontal
+@export var dof_max_blur_near: float = 0.05  # Maximum near blur when horizontal
+@export var dof_focus_offset: float = 0.0  # Offset from calculated focus distance
+@export var dof_smoothing: float = 8.0  # Smoothing for DOF parameter transitions
+
 var terrain: Node3D = null
+var environment: Environment = null
+
+# Internal DOF state
+var current_focus_distance: float = 10.0
+var target_focus_distance: float = 10.0
+var current_blur_amount: float = 0.0
+var target_blur_amount: float = 0.0
 
 # Internal state
 var current_zoom: float = 0.5  # 0 = max zoom out, 1 = max zoom in
@@ -48,6 +64,7 @@ func _process(delta):
 	handle_input(delta)
 	update_camera_transform(delta)
 	smooth_zoom(delta)
+	update_smart_dof(delta)
 
 func handle_input(delta):
 	# Skip input if UI is focused (we'll add this check later)
@@ -138,7 +155,76 @@ func set_terrain(terrain_node: Node3D):
 	terrain = terrain_node
 	print("Camera rig terrain reference set")
 
+func set_environment(env: Environment):
+	environment = env
+	if environment and dof_enabled:
+		# Initialize DOF settings
+		environment.dof_blur_far_enabled = true
+		environment.dof_blur_near_enabled = true
+		print("Camera rig environment reference set - Smart DOF enabled")
+
 func get_terrain_height_at_position(world_pos: Vector3) -> float:
 	if not terrain or not terrain.has_method("get_height_at_position"):
 		return 0.0
 	return terrain.get_height_at_position(world_pos)
+
+func update_smart_dof(delta):
+	"""Smart DOF system: Full DOF when zoomed out, shallow DOF when close and horizontal"""
+	if not dof_enabled or not environment:
+		return
+
+	# Get current pitch angle in degrees
+	var pitch_deg = rad_to_deg(pivot.rotation.x)
+
+	# Calculate blur amount based on pitch angle
+	# When pitch is steep (like -70), blur_factor = 0 (no blur)
+	# When pitch is horizontal (like -10), blur_factor = 1 (max blur)
+	var blur_factor = 0.0
+	if pitch_deg > dof_transition_angle:
+		# We're past the transition angle, moving towards horizontal
+		var angle_range = dof_max_angle - dof_transition_angle
+		var current_offset = pitch_deg - dof_transition_angle
+		blur_factor = clamp(current_offset / angle_range, 0.0, 1.0)
+		# Use ease for smoother transition
+		blur_factor = ease(blur_factor, -2.0)  # Ease in-out
+
+	target_blur_amount = blur_factor
+
+	# Calculate focus distance based on camera position and angle
+	# Ray cast from camera towards terrain to find focus point
+	var camera_global_pos = camera.global_position
+	var camera_forward = -camera.global_transform.basis.z
+
+	# Estimate where we're looking at the terrain
+	# Use simple geometric calculation for focus distance
+	var estimated_focus_distance = camera.position.z * 0.8  # 80% of camera distance as baseline
+
+	# If we have terrain, calculate actual intersection point
+	if terrain:
+		var camera_height = camera_global_pos.y
+		var terrain_height = get_terrain_height_at_position(global_position)
+		var height_diff = camera_height - terrain_height
+
+		# Calculate distance to terrain intersection using camera angle
+		if camera_forward.y < -0.01:  # Looking downward
+			var distance_to_terrain = height_diff / abs(camera_forward.y)
+			estimated_focus_distance = clamp(distance_to_terrain, 1.0, 50.0)
+
+	target_focus_distance = estimated_focus_distance + dof_focus_offset
+
+	# Smoothly interpolate DOF parameters
+	current_focus_distance = lerp(current_focus_distance, target_focus_distance, dof_smoothing * delta)
+	current_blur_amount = lerp(current_blur_amount, target_blur_amount, dof_smoothing * delta)
+
+	# Apply to environment
+	environment.dof_blur_far_enabled = current_blur_amount > 0.01
+	environment.dof_blur_near_enabled = current_blur_amount > 0.01
+
+	if current_blur_amount > 0.01:
+		environment.dof_blur_far_distance = current_focus_distance
+		environment.dof_blur_far_amount = current_blur_amount * dof_max_blur_far
+		environment.dof_blur_far_transition = 5.0  # Smooth transition
+
+		environment.dof_blur_near_distance = current_focus_distance * 0.5
+		environment.dof_blur_near_amount = current_blur_amount * dof_max_blur_near
+		environment.dof_blur_near_transition = 2.0
