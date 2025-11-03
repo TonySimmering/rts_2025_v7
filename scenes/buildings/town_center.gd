@@ -320,7 +320,7 @@ func update_rally_point_indicator():
 
 	# Apply player color to flag
 	var material = StandardMaterial3D.new()
-	material.albedo_color = PlayerColors.get_color(player_id)
+	material.albedo_color = _get_player_color()
 	flag.set_surface_override_material(0, material)
 	rally_point_indicator.add_child(flag)
 
@@ -334,11 +334,22 @@ func update_rally_point_indicator():
 	circle.position = rally_point + Vector3(0, 0.05, 0)
 
 	var circle_material = StandardMaterial3D.new()
-	circle_material.albedo_color = PlayerColors.get_color(player_id)
+	circle_material.albedo_color = _get_player_color()
 	circle_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	circle_material.albedo_color.a = 0.3
 	circle.set_surface_override_material(0, circle_material)
 	rally_point_indicator.add_child(circle)
+
+func _get_player_color() -> Color:
+	"""Get color for this building's player"""
+	var player_colors = [
+		Color(0.8, 0.2, 0.2),  # Player 1: Red
+		Color(0.2, 0.2, 0.8),  # Player 2: Blue
+		Color(0.2, 0.8, 0.2),  # Player 3: Green
+		Color(0.8, 0.8, 0.2),  # Player 4: Yellow
+	]
+	var color_index = (player_id - 1) % player_colors.size()
+	return player_colors[color_index]
 
 # ============ SELECTION OVERRIDES ============
 
