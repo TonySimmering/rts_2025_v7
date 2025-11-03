@@ -340,6 +340,9 @@ func update_rally_point_indicator():
 	circle.set_surface_override_material(0, circle_material)
 	rally_point_indicator.add_child(circle)
 
+	# Only show if building is selected
+	rally_point_indicator.visible = is_selected
+
 func _get_player_color() -> Color:
 	"""Get color for this building's player"""
 	var player_colors = [
@@ -355,11 +358,15 @@ func _get_player_color() -> Color:
 
 func select():
 	super.select()
-	# TODO: Show production UI
+	# Show rally point indicator when selected
+	if rally_point_indicator and is_instance_valid(rally_point_indicator):
+		rally_point_indicator.visible = true
 
 func deselect():
 	super.deselect()
-	# TODO: Hide production UI
+	# Hide rally point indicator when deselected
+	if rally_point_indicator and is_instance_valid(rally_point_indicator):
+		rally_point_indicator.visible = false
 
 func get_production_progress() -> float:
 	"""Get progress of current production (0.0 to 1.0)"""
