@@ -41,7 +41,7 @@ extends Node3D
 @export var dof_smoothing: float = 8.0  # Smoothing for DOF parameter transitions
 
 var terrain: Node3D = null
-var environment: Environment = null
+var camera_attributes: CameraAttributesPractical = null
 
 # Internal DOF state
 var current_focus_distance: float = 10.0
@@ -156,12 +156,14 @@ func set_terrain(terrain_node: Node3D):
 	print("Camera rig terrain reference set")
 
 func set_environment(env: Environment):
-	environment = env
-	if environment and dof_enabled:
-		# Initialize DOF settings
-		environment.dof_blur_far_enabled = true
-		environment.dof_blur_near_enabled = true
-		print("Camera rig environment reference set - Smart DOF enabled")
+	# DOF now uses CameraAttributes in Godot 4.5, not Environment
+	# Create camera attributes if DOF is enabled
+	if dof_enabled:
+		camera_attributes = CameraAttributesPractical.new()
+		camera_attributes.dof_blur_far_enabled = true
+		camera_attributes.dof_blur_near_enabled = true
+		camera.attributes = camera_attributes
+		print("Camera rig Smart DOF enabled using CameraAttributes")
 
 func get_terrain_height_at_position(world_pos: Vector3) -> float:
 	if not terrain or not terrain.has_method("get_height_at_position"):
@@ -170,7 +172,7 @@ func get_terrain_height_at_position(world_pos: Vector3) -> float:
 
 func update_smart_dof(delta):
 	"""Smart DOF system: Full DOF when zoomed out, shallow DOF when close and horizontal"""
-	if not dof_enabled or not environment:
+	if not dof_enabled or not camera_attributes:
 		return
 
 	# Get current pitch angle in degrees
@@ -216,15 +218,15 @@ func update_smart_dof(delta):
 	current_focus_distance = lerp(current_focus_distance, target_focus_distance, dof_smoothing * delta)
 	current_blur_amount = lerp(current_blur_amount, target_blur_amount, dof_smoothing * delta)
 
-	# Apply to environment
-	environment.dof_blur_far_enabled = current_blur_amount > 0.01
-	environment.dof_blur_near_enabled = current_blur_amount > 0.01
+	# Apply to camera attributes (Godot 4.5+)
+	camera_attributes.dof_blur_far_enabled = current_blur_amount > 0.01
+	camera_attributes.dof_blur_near_enabled = current_blur_amount > 0.01
 
 	if current_blur_amount > 0.01:
-		environment.dof_blur_far_distance = current_focus_distance
-		environment.dof_blur_far_amount = current_blur_amount * dof_max_blur_far
-		environment.dof_blur_far_transition = 5.0  # Smooth transition
+		camera_attributes.dof_blur_far_distance = current_focus_distance
+		camera_attributes.dof_blur_far_amount = current_blur_amount * dof_max_blur_far
+		camera_attributes.dof_blur_far_transition = 5.0  # Smooth transition
 
-		environment.dof_blur_near_distance = current_focus_distance * 0.5
-		environment.dof_blur_near_amount = current_blur_amount * dof_max_blur_near
-		environment.dof_blur_near_transition = 2.0
+		camera_attributes.dof_blur_near_distance = current_focus_distance * 0.5
+		camera_attributes.dof_blur_near_amount = current_blur_amount * dof_max_blur_near
+		camera_attributes.dof_blur_near_transition = 2.0
