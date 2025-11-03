@@ -151,6 +151,7 @@ func _find_edge_snap_points(
 	return snap_points
 
 ## Find corner-to-corner snap points for a target building
+## Note: Diagonal/corner snapping has been disabled - returns empty array
 func _find_corner_snap_points(
 	ghost_pos: Vector3,
 	ghost_size: Vector3,
@@ -160,42 +161,8 @@ func _find_corner_snap_points(
 ) -> Array[SnapPoint]:
 	var snap_points: Array[SnapPoint] = []
 
-	var ghost_half_x = ghost_size.x / 2.0
-	var ghost_half_z = ghost_size.z / 2.0
-	var target_half_x = target_size.x / 2.0
-	var target_half_z = target_size.z / 2.0
-
-	# Northeast corner
-	var ne_pos = Vector3(
-		target_pos.x + target_half_x + ghost_half_x,
-		ghost_pos.y,
-		target_pos.z + target_half_z + ghost_half_z
-	)
-	snap_points.append(SnapPoint.new(ne_pos, SnapType.CORNER_NE, target))
-
-	# Northwest corner
-	var nw_pos = Vector3(
-		target_pos.x - target_half_x - ghost_half_x,
-		ghost_pos.y,
-		target_pos.z + target_half_z + ghost_half_z
-	)
-	snap_points.append(SnapPoint.new(nw_pos, SnapType.CORNER_NW, target))
-
-	# Southeast corner
-	var se_pos = Vector3(
-		target_pos.x + target_half_x + ghost_half_x,
-		ghost_pos.y,
-		target_pos.z - target_half_z - ghost_half_z
-	)
-	snap_points.append(SnapPoint.new(se_pos, SnapType.CORNER_SE, target))
-
-	# Southwest corner
-	var sw_pos = Vector3(
-		target_pos.x - target_half_x - ghost_half_x,
-		ghost_pos.y,
-		target_pos.z - target_half_z - ghost_half_z
-	)
-	snap_points.append(SnapPoint.new(sw_pos, SnapType.CORNER_SW, target))
+	# Diagonal snapping disabled - only edge-to-edge snapping is allowed
+	# for cleaner building placement
 
 	return snap_points
 
