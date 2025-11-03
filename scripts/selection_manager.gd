@@ -9,6 +9,10 @@ signal building_deselected()
 var selected_units: Array = []  # Units only (movable)
 var selected_building: Node = null  # Single building selection
 
+# Rally point mode
+var rally_mode_active: bool = false
+var rally_mode_building: Node = null
+
 # Box selection
 var is_box_selecting: bool = false
 var box_select_start: Vector2 = Vector2.ZERO
@@ -55,13 +59,19 @@ func _unhandled_input(event):
 			_on_left_mouse_up(event.position)
 		get_viewport().set_input_as_handled()
 	
-	# Right mouse button - movement command with rotation (only for units)
+	# Right mouse button - movement command with rotation (only for units) OR rally point setting
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_RIGHT:
-		if event.pressed and selected_units.size() > 0:
-			_on_right_mouse_down(event.position)
+		if event.pressed:
+			# Check if in rally mode first
+			if rally_mode_active:
+				_set_rally_point(event.position)
+				get_viewport().set_input_as_handled()
+			elif selected_units.size() > 0:
+				_on_right_mouse_down(event.position)
+				get_viewport().set_input_as_handled()
 		else:
 			_on_right_mouse_up()
-		get_viewport().set_input_as_handled()
+			get_viewport().set_input_as_handled()
 	
 	# Mouse motion for box select and formation rotation
 	if event is InputEventMouseMotion:
@@ -356,3 +366,101 @@ func get_selected_units() -> Array:
 
 func get_selected_building() -> Node:
 	return selected_building
+
+# ============ RALLY POINT SYSTEM ============
+
+func activate_rally_mode(building: Node):
+	"""Activate rally point setting mode for a building"""
+	rally_mode_active = true
+	rally_mode_building = building
+	print("Rally mode activated for: ", building.building_name)
+
+func deactivate_rally_mode():
+	"""Deactivate rally point setting mode"""
+	rally_mode_active = false
+	rally_mode_building = null
+	print("Rally mode deactivated")
+
+func _set_rally_point(mouse_pos: Vector2):
+	"""Set rally point for the building (called on right-click in rally mode)"""
+	if not rally_mode_building or not is_instance_valid(rally_mode_building):
+		print("❌ Rally mode building invalid!")
+		deactivate_rally_mode()
+		return
+
+	# Raycast to find target position
+	var from = camera.project_ray_origin(mouse_pos)
+	var to = from + camera.project_ray_normal(mouse_pos) * 1000.0
+
+	var space_state = camera.get_world_3d().direct_space_state
+	var query = PhysicsRayQueryParameters3D.create(from, to)
+	query.collide_with_areas = false
+	query.collide_with_bodies = true
+
+	var result = space_state.intersect_ray(query)
+
+	if result:
+		var rally_position = result.position
+		var clicked_object = result.collider
+
+		# Check if clicked on a resource node
+		var resource_path = NodePath()
+		if clicked_object.is_in_group("resource_nodes"):
+			resource_path = clicked_object.get_path()
+			print("Rally point set on resource node: ", clicked_object.get_resource_type_string())
+
+		# Send rally point to server
+		if multiplayer.is_server():
+			# Server sets directly
+			_apply_rally_point(rally_mode_building.get_path(), rally_position, resource_path)
+		else:
+			# Client sends RPC to server
+			request_set_rally_point.rpc_id(1, rally_mode_building.get_path(), rally_position, resource_path)
+
+		print("Rally point set to: ", rally_position)
+
+	# Deactivate rally mode after setting
+	deactivate_rally_mode()
+
+	# Notify production UI to update button
+	var production_ui = get_tree().root.get_node_or_null("Game/GameUI/ProductionUI")
+	if production_ui and production_ui.has_method("deactivate_rally_mode"):
+		production_ui.deactivate_rally_mode()
+
+@rpc("any_peer", "call_remote", "reliable")
+func request_set_rally_point(building_path: NodePath, rally_position: Vector3, resource_path: NodePath):
+	"""Server receives rally point request from client"""
+	if not multiplayer.is_server():
+		return
+
+	var sender_id = multiplayer.get_remote_sender_id()
+	var building = get_node_or_null(building_path)
+
+	if not building or not is_instance_valid(building):
+		print("❌ Building not found at path: ", building_path)
+		return
+
+	# Verify ownership
+	if building.player_id != sender_id:
+		print("❌ Player ", sender_id, " tried to set rally point for player ", building.player_id, "'s building!")
+		return
+
+	_apply_rally_point(building_path, rally_position, resource_path)
+
+func _apply_rally_point(building_path: NodePath, rally_position: Vector3, resource_path: NodePath):
+	"""Apply rally point to building (server only)"""
+	var building = get_node_or_null(building_path)
+	if not building or not is_instance_valid(building):
+		return
+
+	var resource_node = null
+	if resource_path != NodePath():
+		resource_node = get_node_or_null(resource_path)
+
+	# Set rally point on the building
+	if resource_node and is_instance_valid(resource_node):
+		if building.has_method("set_rally_point_with_resource"):
+			building.set_rally_point_with_resource(rally_position, resource_node)
+	else:
+		if building.has_method("set_rally_point"):
+			building.set_rally_point(rally_position)

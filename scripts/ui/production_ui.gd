@@ -5,20 +5,28 @@ extends PanelContainer
 @onready var production_queue_container: HBoxContainer = $VBoxContainer/ProductionQueue
 @onready var buttons_container: VBoxContainer = $VBoxContainer/Buttons
 @onready var train_worker_button: Button = $VBoxContainer/Buttons/TrainWorkerButton
+@onready var rally_button: Button = $VBoxContainer/Buttons/RallyButton
 
 # State
 var selected_building: Node = null
+var rally_mode_active: bool = false
+
+# Signal to notify selection manager
+signal rally_mode_activated(building: Node)
+signal rally_mode_deactivated()
 
 func _ready():
 	visible = false
-	
+
 	# Set mouse filter to prevent clicks from passing through
 	mouse_filter = Control.MOUSE_FILTER_STOP
-	
+
 	train_worker_button.pressed.connect(_on_train_worker_pressed)
-	
+	rally_button.pressed.connect(_on_rally_button_pressed)
+
 	# Set up button styling
 	train_worker_button.custom_minimum_size = Vector2(200, 40)
+	rally_button.custom_minimum_size = Vector2(200, 40)
 
 func show_building(building: Node):
 	"""Display UI for the given building"""
@@ -73,33 +81,50 @@ func update_buttons():
 	if not selected_building or not is_instance_valid(selected_building):
 		print("⚠ update_buttons: No valid building")
 		return
-	
+
 	# Show/hide buttons based on building type
 	if selected_building.building_name == "Town Center":
 		train_worker_button.visible = true
-		
+		rally_button.visible = true
+
+		# Update rally button text based on mode
+		if rally_mode_active:
+			rally_button.text = "Rally (Click Map)"
+		else:
+			rally_button.text = "Set Rally Point"
+
 		# Update button state based on affordability
 		if selected_building.has_method("can_train_worker"):
 			var can_train = selected_building.can_train_worker()
 			train_worker_button.disabled = not can_train
-			
+
 			# Update button text with cost
 			var cost = selected_building.WORKER_COST
 			var gold_cost = cost.get("gold", 0)
 			train_worker_button.text = "Train Worker (💰%d)" % gold_cost
-			
+
 			# Show why button is disabled
 			if not can_train:
 				var player_id = multiplayer.get_unique_id()
 				var resources = ResourceManager.get_player_resources(player_id)
 				var current_gold = resources.get("gold", 0)
-				
+
 				if current_gold < gold_cost:
 					train_worker_button.text = "Train Worker (💰%d) - Need %d more gold" % [gold_cost, gold_cost - current_gold]
 				elif selected_building.production_queue.size() >= selected_building.MAX_QUEUE_SIZE:
 					train_worker_button.text = "Train Worker (💰%d) - Queue Full" % gold_cost
+	elif selected_building.building_name == "Barracks":
+		train_worker_button.visible = false
+		rally_button.visible = true
+
+		# Update rally button text based on mode
+		if rally_mode_active:
+			rally_button.text = "Rally (Click Map)"
+		else:
+			rally_button.text = "Set Rally Point"
 	else:
 		train_worker_button.visible = false
+		rally_button.visible = false
 
 func update_production_queue():
 	"""Update the production queue display"""
@@ -220,11 +245,37 @@ func request_train_worker(building_path: NodePath):
 	building.train_worker()
 	print("=== TRAIN REQUEST COMPLETE ===\n")
 
+func _on_rally_button_pressed():
+	"""Called when Rally button is pressed"""
+	print("=== RALLY BUTTON PRESSED ===")
+
+	if not selected_building or not is_instance_valid(selected_building):
+		print("❌ No valid building selected!")
+		return
+
+	# Toggle rally mode
+	rally_mode_active = not rally_mode_active
+
+	if rally_mode_active:
+		print("✓ Rally mode activated - click on map to set rally point")
+		rally_mode_activated.emit(selected_building)
+	else:
+		print("✓ Rally mode deactivated")
+		rally_mode_deactivated.emit()
+
+	update_buttons()
+	print("=== RALLY BUTTON COMPLETE ===\n")
+
+func deactivate_rally_mode():
+	"""Deactivate rally mode (called by selection manager after setting point)"""
+	rally_mode_active = false
+	update_buttons()
+
 func _process(_delta):
 	# Update progress bars continuously
 	if visible and selected_building and is_instance_valid(selected_building):
 		if selected_building.has_method("get_queue_size") and selected_building.get_queue_size() > 0:
 			update_production_queue()
-		
+
 		# Update button affordability
 		update_buttons()

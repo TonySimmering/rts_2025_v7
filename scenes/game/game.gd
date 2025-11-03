@@ -135,6 +135,11 @@ func setup_production_ui():
 		selection_manager.building_deselected.connect(_on_building_deselected)
 		selection_manager.selection_changed.connect(_on_units_selected)
 
+		# Connect production UI rally mode signals to selection manager
+		if production_ui:
+			production_ui.rally_mode_activated.connect(selection_manager.activate_rally_mode)
+			production_ui.rally_mode_deactivated.connect(selection_manager.deactivate_rally_mode)
+
 	print("Game UI and Production UI initialized")
 
 func _on_building_selected(building: Node):
