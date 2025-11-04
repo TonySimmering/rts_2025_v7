@@ -72,6 +72,9 @@ func update_visibility() -> void:
 
 ## Update vision from units and buildings
 func _update_vision_from_entities() -> void:
+	var building_count = 0
+	var unit_count = 0
+
 	# Process all buildings
 	for building in get_tree().get_nodes_in_group("buildings"):
 		if building.has_method("get_player_id") and building.has_method("get_vision_range"):
@@ -81,6 +84,7 @@ func _update_vision_from_entities() -> void:
 
 			if player_id >= 0 and player_id in player_visibility:
 				_reveal_circle(player_id, pos.x, pos.z, vision_range)
+				building_count += 1
 
 	# Process all units
 	for unit in get_tree().get_nodes_in_group("units"):
@@ -91,6 +95,11 @@ func _update_vision_from_entities() -> void:
 
 			if player_id >= 0 and player_id in player_visibility:
 				_reveal_circle(player_id, pos.x, pos.z, vision_range)
+				unit_count += 1
+
+	# Debug output occasionally
+	if Engine.get_process_frames() % 300 == 0:
+		print("FogOfWarManager: Processing vision from %d buildings and %d units" % [building_count, unit_count])
 
 
 ## Reveal a circular area around a world position
