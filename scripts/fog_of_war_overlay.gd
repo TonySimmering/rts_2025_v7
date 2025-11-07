@@ -28,9 +28,10 @@ func _create_fog_mesh() -> void:
 
 	mesh = plane_mesh
 
-	# Position the fog plane slightly above terrain (y=1) to avoid z-fighting
-	position = Vector3(map_width / 2.0, 1.0, map_height / 2.0)
-	rotation.x = -PI / 2  # Rotate to be horizontal
+	# Position the fog plane at the terrain height
+	# Note: PlaneMesh faces upward by default in Godot, no rotation needed
+	position = Vector3(map_width / 2.0, 10.0, map_height / 2.0)  # Elevated to render over terrain
+	rotation = Vector3.ZERO  # No rotation - plane faces up by default
 
 
 ## Create the fog material with shader
@@ -61,8 +62,14 @@ func _create_fog_material() -> void:
 	# Apply material
 	material_override = fog_material
 
-	# Enable transparency rendering
+	# Configure rendering settings
 	cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	gi_mode = GeometryInstance3D.GI_MODE_DISABLED
+
+	# Set render priority to render after terrain
+	render_priority = 1
+
+	print("Fog material created with texture size: ", map_width, "x", map_height)
 
 
 func _process(delta: float) -> void:
@@ -77,15 +84,18 @@ func _process(delta: float) -> void:
 ## Update the visibility texture from FogOfWarManager
 func _update_visibility_texture() -> void:
 	if not FogOfWarManager:
+		print_debug("FogOfWarManager not available")
 		return
 
 	if not visibility_texture:
+		print_debug("Visibility texture not initialized")
 		return
 
 	# Get visibility data from fog of war manager
 	var visibility_data = FogOfWarManager.get_visibility_data(player_id)
 
 	if visibility_data.size() == 0:
+		print_debug("No visibility data for player ", player_id)
 		return
 
 	# Verify data size matches expected size
@@ -93,6 +103,22 @@ func _update_visibility_texture() -> void:
 	if visibility_data.size() != expected_size:
 		push_error("Fog of War: Visibility data size mismatch. Expected %d, got %d" % [expected_size, visibility_data.size()])
 		return
+
+	# Count visibility states for debugging
+	var unexplored_count = 0
+	var explored_count = 0
+	var visible_count = 0
+	for byte in visibility_data:
+		if byte == 0:
+			unexplored_count += 1
+		elif byte == 127:
+			explored_count += 1
+		elif byte == 255:
+			visible_count += 1
+
+	# Print visibility stats occasionally
+	if Engine.get_process_frames() % 300 == 0:  # Every ~5 seconds at 60fps
+		print("Fog of War: Unexplored: %d, Explored: %d, Visible: %d" % [unexplored_count, explored_count, visible_count])
 
 	# Create image from visibility data
 	var image = Image.create_from_data(map_width, map_height, false, Image.FORMAT_R8, visibility_data)
