@@ -13,10 +13,15 @@ var visibility_texture: ImageTexture
 var fog_material: ShaderMaterial
 var update_timer: float = 0.0
 
+# Curtain system to prevent seeing under the fog
+var curtain_mesh_instance: MeshInstance3D
+var curtain_height: float = 50.0  # How far down the curtain extends
+
 
 func _ready() -> void:
 	_create_fog_mesh()
 	_create_fog_material()
+	_create_curtain_mesh()
 
 
 ## Create a plane mesh covering the entire map
@@ -70,6 +75,156 @@ func _create_fog_material() -> void:
 	gi_mode = GeometryInstance3D.GI_MODE_DISABLED
 
 	print("Fog material created with texture size: ", map_width, "x", map_height)
+
+
+## Create curtain mesh that drops down from fog plane
+func _create_curtain_mesh() -> void:
+	curtain_mesh_instance = MeshInstance3D.new()
+	add_child(curtain_mesh_instance)
+
+	# Use the same material as the fog plane
+	curtain_mesh_instance.material_override = fog_material
+
+	# Configure rendering settings
+	curtain_mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	curtain_mesh_instance.gi_mode = GeometryInstance3D.GI_MODE_DISABLED
+
+	print("Curtain mesh instance created")
+
+
+## Update curtain geometry based on visibility data
+func _update_curtain_geometry(visibility_data: PackedByteArray) -> void:
+	if not curtain_mesh_instance:
+		return
+
+	if visibility_data.size() != map_width * map_height:
+		return
+
+	# Create arrays for mesh generation
+	var vertices = PackedVector3Array()
+	var normals = PackedVector3Array()
+	var uvs = PackedVector2Array()
+	var indices = PackedInt32Array()
+
+	# Cell size is 1x1 in world units
+	var cell_size = 1.0
+	var top_y = 0.0  # Relative to parent (fog plane is at position.y in world)
+	var bottom_y = -curtain_height  # Bottom of curtain, relative to parent
+
+	# Parent position offset (fog plane is centered at map_width/2, map_height/2)
+	var offset_x = -map_width / 2.0
+	var offset_z = -map_height / 2.0
+
+	# Generate vertical walls for unexplored and explored tiles
+	# We create walls on the edges between different visibility states
+	for y in range(map_height):
+		for x in range(map_width):
+			var index = y * map_width + x
+			var visibility = visibility_data[index]
+
+			# Only create curtains for unexplored areas (value 0)
+			if visibility == 0:
+				# Local coordinates relative to parent
+				var local_x = float(x) + offset_x
+				var local_z = float(y) + offset_z
+
+				# Check neighbors to determine which walls to create
+				var needs_wall_north = y == 0 or visibility_data[(y-1) * map_width + x] != 0
+				var needs_wall_south = y == map_height - 1 or visibility_data[(y+1) * map_width + x] != 0
+				var needs_wall_west = x == 0 or visibility_data[y * map_width + (x-1)] != 0
+				var needs_wall_east = x == map_width - 1 or visibility_data[y * map_width + (x+1)] != 0
+
+				# Create walls only at boundaries (where unexplored meets explored/visible)
+				# North wall (negative Z direction)
+				if needs_wall_north:
+					_add_wall_quad(vertices, normals, uvs, indices,
+						Vector3(local_x, top_y, local_z),
+						Vector3(local_x + cell_size, top_y, local_z),
+						Vector3(local_x + cell_size, bottom_y, local_z),
+						Vector3(local_x, bottom_y, local_z),
+						Vector3(0, 0, 1), x, y)  # Normal pointing south
+
+				# South wall (positive Z direction)
+				if needs_wall_south:
+					_add_wall_quad(vertices, normals, uvs, indices,
+						Vector3(local_x + cell_size, top_y, local_z + cell_size),
+						Vector3(local_x, top_y, local_z + cell_size),
+						Vector3(local_x, bottom_y, local_z + cell_size),
+						Vector3(local_x + cell_size, bottom_y, local_z + cell_size),
+						Vector3(0, 0, -1), x, y)  # Normal pointing north
+
+				# West wall (negative X direction)
+				if needs_wall_west:
+					_add_wall_quad(vertices, normals, uvs, indices,
+						Vector3(local_x, top_y, local_z + cell_size),
+						Vector3(local_x, top_y, local_z),
+						Vector3(local_x, bottom_y, local_z),
+						Vector3(local_x, bottom_y, local_z + cell_size),
+						Vector3(1, 0, 0), x, y)  # Normal pointing east
+
+				# East wall (positive X direction)
+				if needs_wall_east:
+					_add_wall_quad(vertices, normals, uvs, indices,
+						Vector3(local_x + cell_size, top_y, local_z),
+						Vector3(local_x + cell_size, top_y, local_z + cell_size),
+						Vector3(local_x + cell_size, bottom_y, local_z + cell_size),
+						Vector3(local_x + cell_size, bottom_y, local_z),
+						Vector3(-1, 0, 0), x, y)  # Normal pointing west
+
+	# Create mesh from arrays
+	if vertices.size() > 0:
+		var arrays = []
+		arrays.resize(Mesh.ARRAY_MAX)
+		arrays[Mesh.ARRAY_VERTEX] = vertices
+		arrays[Mesh.ARRAY_NORMAL] = normals
+		arrays[Mesh.ARRAY_TEX_UV] = uvs
+		arrays[Mesh.ARRAY_INDEX] = indices
+
+		var array_mesh = ArrayMesh.new()
+		array_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+		curtain_mesh_instance.mesh = array_mesh
+
+		print("Curtain mesh updated with ", vertices.size(), " vertices")
+	else:
+		curtain_mesh_instance.mesh = null
+
+
+## Helper function to add a quad (wall) to the mesh arrays
+func _add_wall_quad(vertices: PackedVector3Array, normals: PackedVector3Array,
+					uvs: PackedVector2Array, indices: PackedInt32Array,
+					v0: Vector3, v1: Vector3, v2: Vector3, v3: Vector3, normal: Vector3,
+					grid_x: int, grid_y: int) -> void:
+	var base_index = vertices.size()
+
+	# Add vertices
+	vertices.append(v0)
+	vertices.append(v1)
+	vertices.append(v2)
+	vertices.append(v3)
+
+	# Add normals
+	normals.append(normal)
+	normals.append(normal)
+	normals.append(normal)
+	normals.append(normal)
+
+	# Add UVs based on grid position (for shader to sample visibility texture correctly)
+	# Use grid coordinates to map to the visibility texture
+	var uv_x = float(grid_x) / float(map_width)
+	var uv_y = float(grid_y) / float(map_height)
+	uvs.append(Vector2(uv_x, uv_y))
+	uvs.append(Vector2(uv_x, uv_y))
+	uvs.append(Vector2(uv_x, uv_y))
+	uvs.append(Vector2(uv_x, uv_y))
+
+	# Add indices for two triangles (quad)
+	indices.append(base_index)
+	indices.append(base_index + 1)
+	indices.append(base_index + 2)
+
+	indices.append(base_index)
+	indices.append(base_index + 2)
+	indices.append(base_index + 3)
 
 
 func _process(delta: float) -> void:
@@ -126,6 +281,9 @@ func _update_visibility_texture() -> void:
 	# Update texture
 	visibility_texture.update(image)
 
+	# Update curtain geometry to match visibility
+	_update_curtain_geometry(visibility_data)
+
 
 ## Set which player's fog to display
 func set_player_id(new_player_id: int) -> void:
@@ -140,3 +298,8 @@ func set_map_dimensions(width: int, height: int) -> void:
 	# Recreate mesh and material with new dimensions
 	_create_fog_mesh()
 	_create_fog_material()
+
+	# Recreate curtain if it exists
+	if curtain_mesh_instance:
+		curtain_mesh_instance.queue_free()
+	_create_curtain_mesh()
