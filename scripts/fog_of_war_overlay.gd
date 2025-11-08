@@ -62,12 +62,12 @@ func _create_fog_material() -> void:
 	# Apply material
 	material_override = fog_material
 
+	# Set material render priority to render after terrain
+	fog_material.render_priority = 1
+
 	# Configure rendering settings
 	cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	gi_mode = GeometryInstance3D.GI_MODE_DISABLED
-
-	# Set render priority to render after terrain
-	render_priority = 1
 
 	print("Fog material created with texture size: ", map_width, "x", map_height)
 
