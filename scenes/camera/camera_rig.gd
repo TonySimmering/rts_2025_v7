@@ -50,8 +50,8 @@ var current_blur_amount: float = 0.0
 var target_blur_amount: float = 0.0
 
 # Internal state
-var current_zoom: float = 0.5  # 0 = max zoom out, 1 = max zoom in
-var target_zoom: float = 0.5
+var current_zoom: float = 0.0  # 0 = max zoom out, 1 = max zoom in
+var target_zoom: float = 0.0
 var velocity: Vector3 = Vector3.ZERO
 var target_rotation_y: float = 0.0
 
