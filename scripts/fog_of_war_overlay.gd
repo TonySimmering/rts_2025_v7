@@ -35,7 +35,7 @@ func _create_fog_mesh() -> void:
 
 	# Position the fog plane at the terrain height
 	# Note: PlaneMesh faces upward by default in Godot, no rotation needed
-	position = Vector3(map_width / 2.0, 5.0, map_height / 2.0)  # Elevated to render over terrain
+	position = Vector3(map_width / 2.0, 8.0, map_height / 2.0)  # Elevated to render over terrain
 	rotation = Vector3.ZERO  # No rotation - plane faces up by default
 
 
@@ -216,14 +216,15 @@ func _add_wall_quad(vertices: PackedVector3Array, normals: PackedVector3Array,
 	uvs.append(Vector2(uv_x, uv_y))
 	uvs.append(Vector2(uv_x, uv_y))
 
-	# Add indices for two triangles (quad)
+	# Add indices for two triangles (quad) with correct counter-clockwise winding
+	# When viewed from the front (where normal points), vertices should go counter-clockwise
 	indices.append(base_index)
-	indices.append(base_index + 1)
+	indices.append(base_index + 3)
 	indices.append(base_index + 2)
 
 	indices.append(base_index)
 	indices.append(base_index + 2)
-	indices.append(base_index + 3)
+	indices.append(base_index + 1)
 
 
 func _process(delta: float) -> void:
