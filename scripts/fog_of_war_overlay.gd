@@ -35,7 +35,7 @@ func _create_fog_mesh() -> void:
 
 	# Position the fog plane at the terrain height
 	# Note: PlaneMesh faces upward by default in Godot, no rotation needed
-	position = Vector3(map_width / 2.0, 10.0, map_height / 2.0)  # Elevated to render over terrain
+	position = Vector3(map_width / 2.0, 5.0, map_height / 2.0)  # Elevated to render over terrain
 	rotation = Vector3.ZERO  # No rotation - plane faces up by default
 
 
@@ -115,8 +115,8 @@ func _update_curtain_geometry(visibility_data: PackedByteArray) -> void:
 	var offset_x = -map_width / 2.0
 	var offset_z = -map_height / 2.0
 
-	# Generate vertical walls for unexplored and explored tiles
-	# We create walls on the edges between different visibility states
+	# Generate vertical walls for unexplored tiles
+	# Create walls on all four sides of each unexplored tile for complete coverage
 	for y in range(map_height):
 		for x in range(map_width):
 			var index = y * map_width + x
@@ -128,48 +128,47 @@ func _update_curtain_geometry(visibility_data: PackedByteArray) -> void:
 				var local_x = float(x) + offset_x
 				var local_z = float(y) + offset_z
 
-				# Check neighbors to determine which walls to create
-				var needs_wall_north = y == 0 or visibility_data[(y-1) * map_width + x] != 0
-				var needs_wall_south = y == map_height - 1 or visibility_data[(y+1) * map_width + x] != 0
-				var needs_wall_west = x == 0 or visibility_data[y * map_width + (x-1)] != 0
-				var needs_wall_east = x == map_width - 1 or visibility_data[y * map_width + (x+1)] != 0
+				# Check neighbors to avoid duplicate walls (only create wall if neighbor is not also unexplored)
+				var north_unexplored = y > 0 and visibility_data[(y-1) * map_width + x] == 0
+				var south_unexplored = y < map_height - 1 and visibility_data[(y+1) * map_width + x] == 0
+				var west_unexplored = x > 0 and visibility_data[y * map_width + (x-1)] == 0
+				var east_unexplored = x < map_width - 1 and visibility_data[y * map_width + (x+1)] == 0
 
-				# Create walls only at boundaries (where unexplored meets explored/visible)
-				# North wall (negative Z direction)
-				if needs_wall_north:
+				# North wall (at min Z edge) - visible from north, normal points -Z
+				if not north_unexplored:
 					_add_wall_quad(vertices, normals, uvs, indices,
-						Vector3(local_x, top_y, local_z),
-						Vector3(local_x + cell_size, top_y, local_z),
-						Vector3(local_x + cell_size, bottom_y, local_z),
-						Vector3(local_x, bottom_y, local_z),
-						Vector3(0, 0, 1), x, y)  # Normal pointing south
+						Vector3(local_x, top_y, local_z),                    # top-left
+						Vector3(local_x, bottom_y, local_z),                 # bottom-left
+						Vector3(local_x + cell_size, bottom_y, local_z),     # bottom-right
+						Vector3(local_x + cell_size, top_y, local_z),        # top-right
+						Vector3(0, 0, -1), x, y)
 
-				# South wall (positive Z direction)
-				if needs_wall_south:
+				# South wall (at max Z edge) - visible from south, normal points +Z
+				if not south_unexplored:
 					_add_wall_quad(vertices, normals, uvs, indices,
-						Vector3(local_x + cell_size, top_y, local_z + cell_size),
-						Vector3(local_x, top_y, local_z + cell_size),
-						Vector3(local_x, bottom_y, local_z + cell_size),
-						Vector3(local_x + cell_size, bottom_y, local_z + cell_size),
-						Vector3(0, 0, -1), x, y)  # Normal pointing north
+						Vector3(local_x + cell_size, top_y, local_z + cell_size),  # top-right
+						Vector3(local_x + cell_size, bottom_y, local_z + cell_size), # bottom-right
+						Vector3(local_x, bottom_y, local_z + cell_size),            # bottom-left
+						Vector3(local_x, top_y, local_z + cell_size),               # top-left
+						Vector3(0, 0, 1), x, y)
 
-				# West wall (negative X direction)
-				if needs_wall_west:
+				# West wall (at min X edge) - visible from west, normal points -X
+				if not west_unexplored:
 					_add_wall_quad(vertices, normals, uvs, indices,
-						Vector3(local_x, top_y, local_z + cell_size),
-						Vector3(local_x, top_y, local_z),
-						Vector3(local_x, bottom_y, local_z),
-						Vector3(local_x, bottom_y, local_z + cell_size),
-						Vector3(1, 0, 0), x, y)  # Normal pointing east
+						Vector3(local_x, top_y, local_z + cell_size),       # top-left
+						Vector3(local_x, bottom_y, local_z + cell_size),    # bottom-left
+						Vector3(local_x, bottom_y, local_z),                # bottom-right
+						Vector3(local_x, top_y, local_z),                   # top-right
+						Vector3(-1, 0, 0), x, y)
 
-				# East wall (positive X direction)
-				if needs_wall_east:
+				# East wall (at max X edge) - visible from east, normal points +X
+				if not east_unexplored:
 					_add_wall_quad(vertices, normals, uvs, indices,
-						Vector3(local_x + cell_size, top_y, local_z),
-						Vector3(local_x + cell_size, top_y, local_z + cell_size),
-						Vector3(local_x + cell_size, bottom_y, local_z + cell_size),
-						Vector3(local_x + cell_size, bottom_y, local_z),
-						Vector3(-1, 0, 0), x, y)  # Normal pointing west
+						Vector3(local_x + cell_size, top_y, local_z),                  # top-left
+						Vector3(local_x + cell_size, bottom_y, local_z),               # bottom-left
+						Vector3(local_x + cell_size, bottom_y, local_z + cell_size),   # bottom-right
+						Vector3(local_x + cell_size, top_y, local_z + cell_size),      # top-right
+						Vector3(1, 0, 0), x, y)
 
 	# Create mesh from arrays
 	if vertices.size() > 0:
