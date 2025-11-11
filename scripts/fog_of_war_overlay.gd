@@ -216,16 +216,16 @@ func _add_wall_quad(vertices: PackedVector3Array, normals: PackedVector3Array,
 	uvs.append(Vector2(uv_x, uv_y))
 	uvs.append(Vector2(uv_x, uv_y))
 
-	# Add indices for two triangles (quad) with counter-clockwise winding
-	# Standard quad triangulation: (v0,v1,v2) and (v0,v2,v3)
-	# This makes walls visible from the explored side (where camera looks from)
+	# Add indices for two triangles (quad) - REVERSED winding for correct outward-facing normals
+	# Using (v0,v2,v1) and (v0,v3,v2) so normals point toward explored areas
+	# This ensures walls are visible from explored side and block view into unexplored areas
 	indices.append(base_index)
-	indices.append(base_index + 1)
 	indices.append(base_index + 2)
+	indices.append(base_index + 1)
 
 	indices.append(base_index)
-	indices.append(base_index + 2)
 	indices.append(base_index + 3)
+	indices.append(base_index + 2)
 
 
 func _process(delta: float) -> void:
