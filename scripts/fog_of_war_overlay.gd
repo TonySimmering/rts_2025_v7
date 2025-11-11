@@ -106,69 +106,42 @@ func _update_curtain_geometry(visibility_data: PackedByteArray) -> void:
 	var uvs = PackedVector2Array()
 	var indices = PackedInt32Array()
 
-	# Cell size is 1x1 in world units
-	var cell_size = 1.0
-	var top_y = 0.0  # Relative to parent (fog plane is at position.y in world)
-	var bottom_y = -curtain_height  # Bottom of curtain, relative to parent
+	# Curtain dimensions
+	var top_y = 0.0  # At fog plane level (relative to parent)
+	var bottom_y = -curtain_height  # Drops down below terrain
 
-	# Parent position offset (fog plane is centered at map_width/2, map_height/2)
+	# Parent position offset (fog plane is centered)
 	var offset_x = -map_width / 2.0
 	var offset_z = -map_height / 2.0
 
-	# Generate vertical walls for unexplored tiles
-	# Create walls on all four sides of each unexplored tile for complete coverage
+	# Build vertical walls around unexplored regions
+	# For each unexplored tile, check if neighbors are explored/visible and create walls
 	for y in range(map_height):
 		for x in range(map_width):
 			var index = y * map_width + x
 			var visibility = visibility_data[index]
 
-			# Only create curtains for unexplored areas (value 0)
+			# Only create walls for unexplored tiles (value 0)
 			if visibility == 0:
-				# Local coordinates relative to parent
 				var local_x = float(x) + offset_x
 				var local_z = float(y) + offset_z
 
-				# Check neighbors to avoid duplicate walls (only create wall if neighbor is not also unexplored)
-				var north_unexplored = y > 0 and visibility_data[(y-1) * map_width + x] == 0
-				var south_unexplored = y < map_height - 1 and visibility_data[(y+1) * map_width + x] == 0
-				var west_unexplored = x > 0 and visibility_data[y * map_width + (x-1)] == 0
-				var east_unexplored = x < map_width - 1 and visibility_data[y * map_width + (x+1)] == 0
+				# Check each neighbor - create wall if neighbor is NOT unexplored
+				# North neighbor (y-1)
+				if y == 0 or visibility_data[(y-1) * map_width + x] != 0:
+					_add_north_wall(vertices, normals, uvs, indices, local_x, local_z, top_y, bottom_y, x, y)
 
-				# North wall (at min Z edge) - visible from north, normal points -Z
-				if not north_unexplored:
-					_add_wall_quad(vertices, normals, uvs, indices,
-						Vector3(local_x, top_y, local_z),                    # top-left
-						Vector3(local_x, bottom_y, local_z),                 # bottom-left
-						Vector3(local_x + cell_size, bottom_y, local_z),     # bottom-right
-						Vector3(local_x + cell_size, top_y, local_z),        # top-right
-						Vector3(0, 0, -1), x, y)
+				# South neighbor (y+1)
+				if y == map_height - 1 or visibility_data[(y+1) * map_width + x] != 0:
+					_add_south_wall(vertices, normals, uvs, indices, local_x, local_z, top_y, bottom_y, x, y)
 
-				# South wall (at max Z edge) - visible from south, normal points +Z
-				if not south_unexplored:
-					_add_wall_quad(vertices, normals, uvs, indices,
-						Vector3(local_x + cell_size, top_y, local_z + cell_size),  # top-right
-						Vector3(local_x + cell_size, bottom_y, local_z + cell_size), # bottom-right
-						Vector3(local_x, bottom_y, local_z + cell_size),            # bottom-left
-						Vector3(local_x, top_y, local_z + cell_size),               # top-left
-						Vector3(0, 0, 1), x, y)
+				# West neighbor (x-1)
+				if x == 0 or visibility_data[y * map_width + (x-1)] != 0:
+					_add_west_wall(vertices, normals, uvs, indices, local_x, local_z, top_y, bottom_y, x, y)
 
-				# West wall (at min X edge) - visible from west, normal points -X
-				if not west_unexplored:
-					_add_wall_quad(vertices, normals, uvs, indices,
-						Vector3(local_x, top_y, local_z + cell_size),       # top-left
-						Vector3(local_x, bottom_y, local_z + cell_size),    # bottom-left
-						Vector3(local_x, bottom_y, local_z),                # bottom-right
-						Vector3(local_x, top_y, local_z),                   # top-right
-						Vector3(-1, 0, 0), x, y)
-
-				# East wall (at max X edge) - visible from east, normal points +X
-				if not east_unexplored:
-					_add_wall_quad(vertices, normals, uvs, indices,
-						Vector3(local_x + cell_size, top_y, local_z),                  # top-left
-						Vector3(local_x + cell_size, bottom_y, local_z),               # bottom-left
-						Vector3(local_x + cell_size, bottom_y, local_z + cell_size),   # bottom-right
-						Vector3(local_x + cell_size, top_y, local_z + cell_size),      # top-right
-						Vector3(1, 0, 0), x, y)
+				# East neighbor (x+1)
+				if x == map_width - 1 or visibility_data[y * map_width + (x+1)] != 0:
+					_add_east_wall(vertices, normals, uvs, indices, local_x, local_z, top_y, bottom_y, x, y)
 
 	# Create mesh from arrays
 	if vertices.size() > 0:
@@ -183,49 +156,154 @@ func _update_curtain_geometry(visibility_data: PackedByteArray) -> void:
 		array_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 		curtain_mesh_instance.mesh = array_mesh
 
-		print("Curtain mesh updated with ", vertices.size(), " vertices")
+		print("Curtain mesh updated with ", vertices.size(), " vertices and ", indices.size() / 3, " triangles")
 	else:
 		curtain_mesh_instance.mesh = null
 
 
-## Helper function to add a quad (wall) to the mesh arrays
-func _add_wall_quad(vertices: PackedVector3Array, normals: PackedVector3Array,
+## Add a wall on the north side of a tile (faces north, toward negative Z)
+func _add_north_wall(vertices: PackedVector3Array, normals: PackedVector3Array,
 					uvs: PackedVector2Array, indices: PackedInt32Array,
-					v0: Vector3, v1: Vector3, v2: Vector3, v3: Vector3, normal: Vector3,
+					x: float, z: float, top: float, bottom: float,
 					grid_x: int, grid_y: int) -> void:
-	var base_index = vertices.size()
+	var base_idx = vertices.size()
 
-	# Add vertices
-	vertices.append(v0)
-	vertices.append(v1)
-	vertices.append(v2)
-	vertices.append(v3)
+	# Vertices for north wall (looking from north toward wall, should see front face)
+	# Counter-clockwise from viewer's perspective
+	vertices.append(Vector3(x + 1.0, top, z))      # v0: top-right (from viewer)
+	vertices.append(Vector3(x, top, z))            # v1: top-left
+	vertices.append(Vector3(x, bottom, z))         # v2: bottom-left
+	vertices.append(Vector3(x + 1.0, bottom, z))   # v3: bottom-right
 
-	# Add normals
-	normals.append(normal)
-	normals.append(normal)
-	normals.append(normal)
-	normals.append(normal)
+	# Normal points north (toward viewer = negative Z)
+	var n = Vector3(0, 0, -1)
+	normals.append(n)
+	normals.append(n)
+	normals.append(n)
+	normals.append(n)
 
-	# Add UVs based on grid position (for shader to sample visibility texture correctly)
-	# Use grid coordinates to map to the visibility texture
-	var uv_x = float(grid_x) / float(map_width)
-	var uv_y = float(grid_y) / float(map_height)
-	uvs.append(Vector2(uv_x, uv_y))
-	uvs.append(Vector2(uv_x, uv_y))
-	uvs.append(Vector2(uv_x, uv_y))
-	uvs.append(Vector2(uv_x, uv_y))
+	# UVs
+	var uv = Vector2(float(grid_x) / float(map_width), float(grid_y) / float(map_height))
+	uvs.append(uv)
+	uvs.append(uv)
+	uvs.append(uv)
+	uvs.append(uv)
 
-	# Add indices for two triangles (quad) - REVERSED winding for correct outward-facing normals
-	# Using (v0,v2,v1) and (v0,v3,v2) so normals point toward explored areas
-	# This ensures walls are visible from explored side and block view into unexplored areas
-	indices.append(base_index)
-	indices.append(base_index + 2)
-	indices.append(base_index + 1)
+	# Triangles: (v0,v1,v2) and (v0,v2,v3)
+	indices.append(base_idx)
+	indices.append(base_idx + 1)
+	indices.append(base_idx + 2)
+	indices.append(base_idx)
+	indices.append(base_idx + 2)
+	indices.append(base_idx + 3)
 
-	indices.append(base_index)
-	indices.append(base_index + 3)
-	indices.append(base_index + 2)
+
+## Add a wall on the south side of a tile (faces south, toward positive Z)
+func _add_south_wall(vertices: PackedVector3Array, normals: PackedVector3Array,
+					uvs: PackedVector2Array, indices: PackedInt32Array,
+					x: float, z: float, top: float, bottom: float,
+					grid_x: int, grid_y: int) -> void:
+	var base_idx = vertices.size()
+
+	# Vertices for south wall (looking from south toward wall)
+	vertices.append(Vector3(x, top, z + 1.0))            # v0: top-right (from viewer)
+	vertices.append(Vector3(x + 1.0, top, z + 1.0))      # v1: top-left
+	vertices.append(Vector3(x + 1.0, bottom, z + 1.0))   # v2: bottom-left
+	vertices.append(Vector3(x, bottom, z + 1.0))         # v3: bottom-right
+
+	# Normal points south (toward viewer = positive Z)
+	var n = Vector3(0, 0, 1)
+	normals.append(n)
+	normals.append(n)
+	normals.append(n)
+	normals.append(n)
+
+	# UVs
+	var uv = Vector2(float(grid_x) / float(map_width), float(grid_y) / float(map_height))
+	uvs.append(uv)
+	uvs.append(uv)
+	uvs.append(uv)
+	uvs.append(uv)
+
+	# Triangles
+	indices.append(base_idx)
+	indices.append(base_idx + 1)
+	indices.append(base_idx + 2)
+	indices.append(base_idx)
+	indices.append(base_idx + 2)
+	indices.append(base_idx + 3)
+
+
+## Add a wall on the west side of a tile (faces west, toward negative X)
+func _add_west_wall(vertices: PackedVector3Array, normals: PackedVector3Array,
+					uvs: PackedVector2Array, indices: PackedInt32Array,
+					x: float, z: float, top: float, bottom: float,
+					grid_x: int, grid_y: int) -> void:
+	var base_idx = vertices.size()
+
+	# Vertices for west wall (looking from west toward wall)
+	vertices.append(Vector3(x, top, z))            # v0: top-right (from viewer)
+	vertices.append(Vector3(x, top, z + 1.0))      # v1: top-left
+	vertices.append(Vector3(x, bottom, z + 1.0))   # v2: bottom-left
+	vertices.append(Vector3(x, bottom, z))         # v3: bottom-right
+
+	# Normal points west (toward viewer = negative X)
+	var n = Vector3(-1, 0, 0)
+	normals.append(n)
+	normals.append(n)
+	normals.append(n)
+	normals.append(n)
+
+	# UVs
+	var uv = Vector2(float(grid_x) / float(map_width), float(grid_y) / float(map_height))
+	uvs.append(uv)
+	uvs.append(uv)
+	uvs.append(uv)
+	uvs.append(uv)
+
+	# Triangles
+	indices.append(base_idx)
+	indices.append(base_idx + 1)
+	indices.append(base_idx + 2)
+	indices.append(base_idx)
+	indices.append(base_idx + 2)
+	indices.append(base_idx + 3)
+
+
+## Add a wall on the east side of a tile (faces east, toward positive X)
+func _add_east_wall(vertices: PackedVector3Array, normals: PackedVector3Array,
+					uvs: PackedVector2Array, indices: PackedInt32Array,
+					x: float, z: float, top: float, bottom: float,
+					grid_x: int, grid_y: int) -> void:
+	var base_idx = vertices.size()
+
+	# Vertices for east wall (looking from east toward wall)
+	vertices.append(Vector3(x + 1.0, top, z + 1.0))      # v0: top-right (from viewer)
+	vertices.append(Vector3(x + 1.0, top, z))            # v1: top-left
+	vertices.append(Vector3(x + 1.0, bottom, z))         # v2: bottom-left
+	vertices.append(Vector3(x + 1.0, bottom, z + 1.0))   # v3: bottom-right
+
+	# Normal points east (toward viewer = positive X)
+	var n = Vector3(1, 0, 0)
+	normals.append(n)
+	normals.append(n)
+	normals.append(n)
+	normals.append(n)
+
+	# UVs
+	var uv = Vector2(float(grid_x) / float(map_width), float(grid_y) / float(map_height))
+	uvs.append(uv)
+	uvs.append(uv)
+	uvs.append(uv)
+	uvs.append(uv)
+
+	# Triangles
+	indices.append(base_idx)
+	indices.append(base_idx + 1)
+	indices.append(base_idx + 2)
+	indices.append(base_idx)
+	indices.append(base_idx + 2)
+	indices.append(base_idx + 3)
 
 
 func _process(delta: float) -> void:
