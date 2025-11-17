@@ -117,6 +117,8 @@ func set_building_type(type: String):
 			building_size = Vector3(4, 4, 4)
 		"barracks":
 			building_size = Vector3(6, 5, 6)
+		"wall":
+			building_size = Vector3(4, 4, 0.5)
 
 	setup_mesh()
 

@@ -12,6 +12,11 @@ var building_queue: Array = []  # Queue of buildings to place
 var selected_workers: Array = []  # Workers that will build
 var player_id: int = 1
 
+# Wall chain state
+var is_wall_chain_mode: bool = false
+var wall_chain_manager: WallChainManager = null
+var wall_chain_ghosts: Array = []  # Visual ghosts for the chain
+
 # References
 var camera: Camera3D = null
 var terrain: Node = null
@@ -20,24 +25,32 @@ var terrain: Node = null
 const BUILDING_COSTS = {
 	"town_center": {"wood": 400, "gold": 200},
 	"house": {"wood": 50},
-	"barracks": {"wood": 150, "gold": 50}
+	"barracks": {"wood": 150, "gold": 50},
+	"wall": {"wood": 10}
 }
 
 # Construction times
 const CONSTRUCTION_TIMES = {
 	"town_center": 60.0,
 	"house": 20.0,
-	"barracks": 30.0
+	"barracks": 30.0,
+	"wall": 5.0
 }
 
 func _ready():
-	pass
+	# Initialize wall chain manager
+	wall_chain_manager = WallChainManager.new()
+	add_child(wall_chain_manager)
 
 func set_camera(cam: Camera3D):
 	camera = cam
+	if wall_chain_manager:
+		wall_chain_manager.set_camera(cam)
 
 func set_terrain(terr: Node):
 	terrain = terr
+	if wall_chain_manager:
+		wall_chain_manager.set_terrain(terr)
 
 func set_player_id(pid: int):
 	player_id = pid
@@ -58,16 +71,22 @@ func _input(event):
 			toggle_snapping()  # Toggle snapping with TAB key
 			get_viewport().set_input_as_handled()
 
-	# Handle right-click to exit placement mode
+	# Handle right-click to exit placement mode OR finish wall chain
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_RIGHT and event.pressed:
-		end_placement_mode()
+		if is_wall_chain_mode:
+			finish_wall_chain()
+		else:
+			end_placement_mode()
 		get_viewport().set_input_as_handled()
 
-	# Handle left-click to place building
+	# Handle left-click to place building OR add wall segment
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
 		if current_ghost and current_ghost.is_valid_placement:
-			var queue_mode = Input.is_key_pressed(KEY_SHIFT)
-			place_building(queue_mode)
+			if is_wall_chain_mode:
+				add_wall_segment()
+			else:
+				var queue_mode = Input.is_key_pressed(KEY_SHIFT)
+				place_building(queue_mode)
 			get_viewport().set_input_as_handled()
 
 func start_placement_mode(building_type: String, workers: Array):
@@ -80,6 +99,14 @@ func start_placement_mode(building_type: String, workers: Array):
 	selected_workers = workers
 	building_queue = [building_type]  # Start with one building
 
+	# Check if this is a wall (enable chain mode)
+	if building_type == "wall":
+		is_wall_chain_mode = true
+		wall_chain_ghosts.clear()
+		if wall_chain_manager:
+			wall_chain_manager.clear_chain()
+		print("Wall chain mode activated")
+
 	create_ghost(building_type)
 
 	print("Placement mode started: ", building_type)
@@ -90,6 +117,11 @@ func end_placement_mode():
 	if current_ghost:
 		current_ghost.queue_free()
 		current_ghost = null
+
+	# Clean up wall chain
+	if is_wall_chain_mode:
+		cleanup_wall_chain()
+		is_wall_chain_mode = false
 
 	is_placing = false
 	building_queue.clear()
@@ -146,8 +178,18 @@ func update_ghost_position(mouse_pos: Vector2, delta: float = 0.0):
 	if result:
 		var world_pos = result.position
 
-		# Check for snapping to nearby buildings (magnetic behavior)
-		if current_ghost.check_for_snapping(player_id, world_pos, delta, terrain):
+		# Wall chain mode - use chain manager to calculate next segment
+		if is_wall_chain_mode and wall_chain_manager.is_chaining:
+			var next_segment = wall_chain_manager.update_next_segment_position(world_pos)
+
+			current_ghost.global_position = next_segment.position
+			current_ghost.rotation.y = next_segment.rotation
+
+			# Update validation based on path availability
+			current_ghost.is_valid_placement = next_segment.is_valid
+			current_ghost.update_placement_validity(next_segment.is_valid)
+		# Normal placement mode
+		elif current_ghost.check_for_snapping(player_id, world_pos, delta, terrain):
 			# Position already applied by snap controller (with terrain clamping)
 			pass
 		else:
@@ -358,3 +400,105 @@ func get_building_cost(building_type: String) -> Dictionary:
 func get_construction_time(building_type: String) -> float:
 	"""Get construction time"""
 	return CONSTRUCTION_TIMES.get(building_type, 30.0)
+
+# Wall chain construction functions
+
+func add_wall_segment():
+	"""Add a wall segment to the current chain"""
+	if not is_wall_chain_mode or not current_ghost:
+		return
+
+	var placement_data = current_ghost.get_placement_data()
+
+	# Start chain with first segment
+	if not wall_chain_manager.is_chaining:
+		wall_chain_manager.start_chain(placement_data.position)
+	else:
+		# Add segment to chain
+		wall_chain_manager.add_segment(placement_data.position, placement_data.rotation)
+
+	# Create a visual ghost for this segment
+	create_chain_ghost(placement_data.position, placement_data.rotation)
+
+	print("Wall segment added to chain (", wall_chain_manager.get_chain_segments().size(), " segments)")
+
+func create_chain_ghost(position: Vector3, rotation: float):
+	"""Create a visual ghost for a placed chain segment"""
+	var ghost_script = load("res://scripts/building_ghost.gd")
+	var ghost = ghost_script.new()
+
+	# Add required child nodes
+	var mesh_instance = MeshInstance3D.new()
+	mesh_instance.name = "MeshInstance3D"
+	ghost.add_child(mesh_instance)
+
+	var placement_indicator = MeshInstance3D.new()
+	placement_indicator.name = "PlacementIndicator"
+	ghost.add_child(placement_indicator)
+
+	# Add to scene
+	get_tree().root.add_child(ghost)
+
+	# Initialize ghost
+	ghost.set_building_type("wall")
+	ghost.global_position = position
+	ghost.rotation.y = rotation
+
+	# Make it semi-transparent to show it's placed
+	if ghost.mesh_instance:
+		var material = StandardMaterial3D.new()
+		material.albedo_color = Color(0.5, 0.8, 0.5, 0.4)
+		material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		ghost.mesh_instance.set_surface_override_material(0, material)
+
+	wall_chain_ghosts.append(ghost)
+
+func finish_wall_chain():
+	"""Finish the wall chain and place all segments"""
+	if not is_wall_chain_mode:
+		return
+
+	var segments = wall_chain_manager.get_chain_segments()
+
+	if segments.is_empty():
+		print("No wall segments to place")
+		cleanup_wall_chain()
+		end_placement_mode()
+		return
+
+	print("Finishing wall chain with ", segments.size(), " segments")
+
+	# Place each segment as a construction site
+	for segment in segments:
+		place_wall_segment(segment.position, segment.rotation)
+
+	# Clean up and end chain mode
+	cleanup_wall_chain()
+	end_placement_mode()
+
+func place_wall_segment(position: Vector3, rotation: float):
+	"""Place a single wall segment"""
+	var placement_data = {
+		"position": position,
+		"rotation": rotation,
+		"building_type": "wall",
+		"size": Vector3(4, 4, 0.5)
+	}
+
+	# Send to server if not authority
+	if not multiplayer.is_server():
+		request_place_building_rpc.rpc_id(1, placement_data, player_id)
+	else:
+		server_create_construction_site(placement_data, player_id)
+
+func cleanup_wall_chain():
+	"""Clean up all wall chain ghosts"""
+	for ghost in wall_chain_ghosts:
+		if is_instance_valid(ghost):
+			ghost.queue_free()
+
+	wall_chain_ghosts.clear()
+
+	if wall_chain_manager:
+		wall_chain_manager.clear_chain()
+		wall_chain_manager.end_chain()

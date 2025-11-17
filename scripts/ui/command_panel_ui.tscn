@@ -49,3 +49,9 @@ custom_minimum_size = Vector2(150, 40)
 layout_mode = 2
 text = "Build Town Center
 (🪵400 💰200)"
+
+[node name="BuildWallButton" type="Button" parent="VBoxContainer/ButtonsGrid"]
+custom_minimum_size = Vector2(150, 40)
+layout_mode = 2
+text = "Build Wall
+(🪵10)"
