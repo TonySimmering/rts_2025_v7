@@ -203,10 +203,6 @@ func _issue_rally_command_to_new_worker():
 	# Get the last worker (most recently added)
 	var worker = workers[workers.size() - 1]
 
-	# Only issue command if we control this worker
-	if not worker.is_multiplayer_authority():
-		return
-
 	# Create appropriate command based on rally point
 	var command = null
 
@@ -222,9 +218,10 @@ func _issue_rally_command_to_new_worker():
 		command.target_position = rally_point
 		print("Worker moving to rally point: ", rally_point)
 
-	# Queue the command (don't replace existing commands)
-	if worker.has_method("queue_command"):
-		worker.queue_command(command, false)
+	# Call the RPC directly since we're on the server
+	# (workers have authority set to player_id, not server)
+	if worker.has_method("queue_command_rpc"):
+		worker.queue_command_rpc.rpc(command.to_dict(), false)
 
 func get_spawn_position() -> Vector3:
 	"""Calculate spawn position near building"""

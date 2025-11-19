@@ -155,8 +155,32 @@ func spawn_soldier():
 		print("Barracks would spawn soldier for player ", player_id, " at ", spawn_pos)
 		# For MVP, we'll just add to population count
 		ResourceManager.add_population_used(player_id, 1)
+
+		# When soldiers are implemented, issue rally point command after spawning
+		# await get_tree().create_timer(0.1).timeout
+		# _issue_rally_command_to_new_soldier()
 	else:
 		push_error("SpawnManager not found!")
+
+func _issue_rally_command_to_new_soldier():
+	"""Issue move command to the most recently spawned soldier"""
+	# Find the most recently spawned soldier
+	var soldiers = get_tree().get_nodes_in_group("player_%d_units" % player_id)
+	if soldiers.is_empty():
+		return
+
+	# Get the last soldier (most recently added)
+	var soldier = soldiers[soldiers.size() - 1]
+
+	# Create move command to rally point
+	var command = UnitCommand.new(UnitCommand.CommandType.MOVE)
+	command.target_position = rally_point
+	print("Soldier moving to rally point: ", rally_point)
+
+	# Call the RPC directly since we're on the server
+	# (units have authority set to player_id, not server)
+	if soldier.has_method("queue_command_rpc"):
+		soldier.queue_command_rpc.rpc(command.to_dict(), false)
 
 func get_spawn_position() -> Vector3:
 	"""Calculate spawn position near building"""
