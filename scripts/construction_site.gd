@@ -167,7 +167,8 @@ func spawn_building():
 	var building_scenes = {
 		"town_center": "res://scenes/buildings/town_center.tscn",
 		"house": "res://scenes/buildings/house.tscn",
-		"barracks": "res://scenes/buildings/barracks.tscn"
+		"barracks": "res://scenes/buildings/barracks.tscn",
+		"wall": "res://scenes/buildings/wall.tscn"
 	}
 
 	var scene_path = building_scenes.get(building_type, "")

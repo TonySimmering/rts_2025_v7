@@ -8,6 +8,7 @@ extends PanelContainer
 @onready var build_house_button: Button = $VBoxContainer/ButtonsGrid/BuildHouseButton
 @onready var build_barracks_button: Button = $VBoxContainer/ButtonsGrid/BuildBarracksButton
 @onready var build_town_center_button: Button = $VBoxContainer/ButtonsGrid/BuildTownCenterButton
+@onready var build_wall_button: Button = $VBoxContainer/ButtonsGrid/BuildWallButton
 
 # State
 var selected_units: Array = []
@@ -17,7 +18,8 @@ var building_placement_manager: BuildingPlacementManager = null
 const BUILDING_COSTS = {
 	"town_center": {"wood": 400, "gold": 200},
 	"house": {"wood": 50},
-	"barracks": {"wood": 150, "gold": 50}
+	"barracks": {"wood": 150, "gold": 50},
+	"wall": {"wood": 10}
 }
 
 func _ready():
@@ -38,6 +40,10 @@ func _ready():
 	if build_town_center_button:
 		build_town_center_button.pressed.connect(_on_build_town_center_pressed)
 		build_town_center_button.custom_minimum_size = Vector2(150, 40)
+
+	if build_wall_button:
+		build_wall_button.pressed.connect(_on_build_wall_pressed)
+		build_wall_button.custom_minimum_size = Vector2(150, 40)
 
 	# Setup grid
 	if buttons_container:
@@ -128,6 +134,20 @@ func update_buttons():
 		else:
 			build_town_center_button.text = "Build Town Center\n(🪵%d 💰%d) ❌" % [wood_cost, gold_cost]
 
+	# Update Wall button
+	if build_wall_button:
+		var wall_cost = BUILDING_COSTS["wall"]
+		var can_afford_wall = ResourceManager.can_afford(player_id, wall_cost)
+		build_wall_button.disabled = not can_afford_wall
+
+		var wood_cost = wall_cost.get("wood", 0)
+		if can_afford_wall:
+			build_wall_button.text = "Build Wall\n(🪵%d)" % wood_cost
+		else:
+			var current_wood = resources.get("wood", 0)
+			var needed = wood_cost - current_wood
+			build_wall_button.text = "Build Wall\n(🪵%d) Need %d" % [wood_cost, needed]
+
 func _on_build_house_pressed():
 	"""Called when Build House button is pressed"""
 	print("Build House button pressed")
@@ -142,6 +162,11 @@ func _on_build_town_center_pressed():
 	"""Called when Build Town Center button is pressed"""
 	print("Build Town Center button pressed")
 	start_building_placement("town_center")
+
+func _on_build_wall_pressed():
+	"""Called when Build Wall button is pressed"""
+	print("Build Wall button pressed")
+	start_building_placement("wall")
 
 func start_building_placement(building_type: String):
 	"""Start building placement mode"""
